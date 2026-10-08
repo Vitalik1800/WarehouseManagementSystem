@@ -1,0 +1,6 @@
+-r backend/requirements.txt
+-r frontend/requirements.txt
+
+pytest
+pytest-cov
+pytest-mock
