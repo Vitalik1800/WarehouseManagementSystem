@@ -38,7 +38,7 @@ def setup_backend_logging() -> logging.Logger:
 
     logger.propagate = False
 
-    # Avoid adding duplicate handlers.
+    # Запобігаємо додаванню дубльованих обробників журналу.
 
     if logger.handlers:
         return logger

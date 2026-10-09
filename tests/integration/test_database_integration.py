@@ -20,7 +20,7 @@ from backend.app.models import (
 
 @pytest.fixture
 def db_session():
-    """Every test runs in a transaction that is rolled back."""
+    """Кожен тест виконується в транзакції з подальшим відкатом."""
     with engine.connect() as connection:
         transaction = connection.begin()
 
@@ -43,12 +43,12 @@ def unique_value(prefix: str) -> str:
 def create_sample_records(db: Session):
     category = Category(
         name=unique_value("Category"),
-        description="Integration test category",
+        description="Категорія для інтеграційного тестування",
     )
 
     location = StorageLocation(
         name=unique_value("Location"),
-        description="Integration test location",
+        description="Місце зберігання для інтеграційного тестування",
     )
 
     supplier = Supplier(
@@ -57,7 +57,7 @@ def create_sample_records(db: Session):
     )
 
     user = User(
-        name="Integration Test User",
+        name="Користувач інтеграційного тестування",
         username=unique_value("testuser"),
         password_hash="test_hash_not_a_real_password",
         role="worker",
@@ -69,7 +69,7 @@ def create_sample_records(db: Session):
 
     product = Product(
         sku=unique_value("SKU"),
-        name="Integration Test Product",
+        name="Товар для інтеграційного тестування",
         unit="pcs",
         quantity=Decimal("25.000"),
         category_id=category.id,
@@ -106,7 +106,7 @@ def test_create_and_read_orm_records(db_session):
     loaded_product = db_session.get(Product, product.id)
 
     assert loaded_product is not None
-    assert loaded_product.name == "Integration Test Product"
+    assert loaded_product.name == "Товар для інтеграційного тестування"
     assert loaded_product.quantity == Decimal("25.000")
     assert loaded_product.category.name == category.name
     assert loaded_product.location.name == location.name
@@ -123,7 +123,7 @@ def test_stock_movement_relationships(db_session):
         supplier_id=supplier.id,
         movement_type="receipt",
         quantity=Decimal("5.000"),
-        note="Integration test receipt",
+        note="Тестове надходження товару",
     )
 
     db_session.add(movement)
@@ -145,7 +145,7 @@ def test_unique_sku_constraint(db_session):
 
     duplicate = Product(
         sku=product.sku,
-        name="Duplicate SKU",
+        name="Дублікат артикулу",
         unit="pcs",
         quantity=Decimal("1.000"),
         category_id=category.id,
@@ -227,7 +227,7 @@ def test_transaction_rollback():
                 ),
                 {
                     "name": marker,
-                    "description": "Rollback test",
+                    "description": "Перевірка відкочування транзакції",
                 },
             )
         finally:

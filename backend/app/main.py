@@ -14,32 +14,32 @@ logger = get_backend_logger("main")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("WarehouseManagementSystem API starting")
+    logger.info("Запуск API системи управління складом")
 
     yield
 
-    logger.info("WarehouseManagementSystem API stopping")
+    logger.info("Зупинка API системи управління складом")
 
 
 app = FastAPI(
     title=settings.app_name,
-    description="REST API for warehouse inventory management",
+    description="REST API для автоматизації обліку товарів на складі",
     version="0.1.0",
     debug=settings.debug,
     lifespan=lifespan
 )
 
 
-@app.get("/", tags=["System"])
+@app.get("/", tags=["Система"])
 def root():
     return {
         "application": settings.app_name,
-        "message": "WarehouseManagementSystem API",
+        "message": "API системи управління складом",
         "version": app.version
     }
 
 
-@app.get("/health", tags=["System"])
+@app.get("/health", tags=["Система"])
 def health_check():
     return {
         "status": "ok",

@@ -15,7 +15,7 @@ class WarehouseApplication(ctk.CTk):
         self.settings = get_frontend_settings()
         self.logger = get_frontend_logger("main")
 
-        self.title("WarehouseManagementSystem")
+        self.title("Система управління складом")
 
         self.geometry("1100x700")
         self.minsize(800,500)
@@ -26,12 +26,12 @@ class WarehouseApplication(ctk.CTk):
         )
 
         self.logger.info(
-            "WarehouseManagementSystem frontend initialized"
+            "Інтерфейс системи управління складом ініціалізовано"
         )
 
     def on_close(self):
         self.logger.info(
-            "WarehouseManagementSystem frontend closing"
+            "Закриття інтерфейсу системи управління складом"
         )
         self.destroy()
 
@@ -41,7 +41,7 @@ def main():
     ctk.set_default_color_theme("blue")
 
     logger = get_frontend_logger("startup")
-    logger.info("Starting desktop application")
+    logger.info("Запуск настільного застосунку")
 
     app = WarehouseApplication()
     app.mainloop()
