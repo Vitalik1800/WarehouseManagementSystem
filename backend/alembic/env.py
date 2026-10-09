@@ -1,4 +1,3 @@
-
 from logging.config import fileConfig
 
 from alembic import context
@@ -15,9 +14,28 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 
+
 settings = get_settings()
 
-database_url = settings.database_url.get_secret_value()
+migration_args = context.get_x_argument(as_dictionary=True)
+
+database_url = migration_args.get(
+    "db_url",
+    settings.database_url.get_secret_value()
+)
+
+if "db_url" in migration_args:
+    from sqlalchemy.engine import make_url
+
+    parsed_url = make_url(database_url)
+
+    if (
+        parsed_url.get_backend_name() != "mysql"
+        or parsed_url.database != "warehouse_test_db"
+    ):
+        raise RuntimeError(
+            "Explicit migration URL must target warehouse_test_db"
+        )
 
 config.set_main_option(
     "sqlalchemy.url",

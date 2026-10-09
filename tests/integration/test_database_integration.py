@@ -7,7 +7,6 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
-from backend.app.db.session import engine
 from backend.app.models import (
     Category,
     Product,
@@ -16,24 +15,6 @@ from backend.app.models import (
     Supplier,
     User,
 )
-
-
-@pytest.fixture
-def db_session():
-    """Кожен тест виконується в транзакції з подальшим відкатом."""
-    with engine.connect() as connection:
-        transaction = connection.begin()
-
-        with Session(
-            bind=connection,
-            join_transaction_mode="create_savepoint",
-            expire_on_commit=False,
-        ) as session:
-            try:
-                yield session
-            finally:
-                session.close()
-                transaction.rollback()
 
 
 def unique_value(prefix: str) -> str:
@@ -82,13 +63,14 @@ def create_sample_records(db: Session):
     return category, location, supplier, user, product
 
 
-def test_all_database_tables_exist():
-    inspector = inspect(engine)
+def test_all_database_tables_exist(test_engine):
+    inspector = inspect(test_engine)
 
     expected = {
         "alembic_version",
         "categories",
         "products",
+        "revoked_tokens",
         "stock_movements",
         "storage_locations",
         "suppliers",
@@ -213,10 +195,10 @@ def test_foreign_key_restrict(db_session):
         )
 
 
-def test_transaction_rollback():
+def test_transaction_rollback(test_engine):
     marker = unique_value("RollbackCategory")
 
-    with engine.connect() as connection:
+    with test_engine.connect() as connection:
         transaction = connection.begin()
 
         try:
@@ -233,7 +215,7 @@ def test_transaction_rollback():
         finally:
             transaction.rollback()
 
-    with Session(engine) as session:
+    with Session(test_engine) as session:
         result = session.scalar(
             select(Category).where(Category.name == marker)
         )

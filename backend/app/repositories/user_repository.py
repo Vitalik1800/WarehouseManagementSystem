@@ -43,3 +43,26 @@ class UserRepository:
         self.db.flush()
 
         return user
+
+    def get_all(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50
+    ) -> list[User]:
+        """Повертає користувачів із підтримкою пагінації."""
+
+        if offset < 0:
+            raise ValueError("Offset must not be negative")
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Limit must be between 1 and 100")
+
+        statement = (
+            select(User)
+            .order_by(User.id)
+            .offset(offset)
+            .limit(limit)
+        )
+
+        return list(self.db.scalars(statement).all())
