@@ -1,0 +1,63 @@
+name: Warehouse Management System CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests and Security Audit
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root_test_password
+          MYSQL_DATABASE: warehouse_test_db
+          MYSQL_USER: warehouse_test_user
+          MYSQL_PASSWORD: warehouse_test_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot_test_password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      APP_ENV: testing
+      DEBUG: "false"
+      DATABASE_URL: mysql+pymysql://warehouse_test_user:warehouse_test_password@127.0.0.1:3306/warehouse_test_db?charset=utf8mb4
+      JWT_SECRET_KEY: github_actions_testing_secret_key_2026_only
+      JWT_ALGORITHM: HS256
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Apply database migrations
+        run: python -m alembic upgrade head
+
+      - name: Run tests with coverage
+        run: |
+          python -m pytest --cov=backend.app --cov-report=term-missing --cov-fail-under=90 -q
+
+      - name: Check dependency compatibility
+        run: python -m pip check
+
+      - name: Audit dependencies
+        run: python -m pip_audit -r requirements-lock.txt
