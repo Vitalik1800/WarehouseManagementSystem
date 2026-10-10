@@ -8,11 +8,11 @@ from backend.app.schemas.users import UserUpdate
 from backend.app.services.user_service import (
     UserService,
     UsernameAlreadyExistsError,
-    LastActiveAdminError
+    LastActiveAdminError,
+    SelfAdministrativeActionError
 )
 
 from backend.app.schemas.users import UserRoleUpdate
-from backend.app.services.user_service import LastActiveAdminError
 
 from backend.app.services.user_service import UserNotFoundError
 
@@ -462,6 +462,94 @@ def test_set_user_active_user_not_found():
 
     service.users.get_active_admins_for_update.assert_called_once()
     service.users.get_by_id.assert_called_once_with(999)
+
+    db.commit.assert_not_called()
+    db.refresh.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_change_user_role_prevents_self_demotion():
+    db = Mock()
+    service = UserService(db)
+
+    first_admin = User(
+        id=1,
+        name="First Administrator",
+        username="first_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        id=2,
+        name="Second Administrator",
+        username="second_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[first_admin, second_admin]
+    )
+    service.users.get_by_id = Mock(
+        return_value=first_admin
+    )
+
+    with pytest.raises(SelfAdministrativeActionError):
+        service.change_user_role(
+            user_id=1,
+            data=UserRoleUpdate(role="worker"),
+            actor_id=1,
+        )
+
+    assert first_admin.role == "admin"
+    assert second_admin.role == "admin"
+
+    db.commit.assert_not_called()
+    db.refresh.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_set_user_active_prevents_self_deactivation():
+    db = Mock()
+    service = UserService(db)
+
+    first_admin = User(
+        id=1,
+        name="First Administrator",
+        username="first_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        id=2,
+        name="Second Administrator",
+        username="second_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[first_admin, second_admin]
+    )
+    service.users.get_by_id = Mock(
+        return_value=first_admin
+    )
+
+    with pytest.raises(SelfAdministrativeActionError):
+        service.set_user_active(
+            user_id=1,
+            is_active=False,
+            actor_id=1,
+        )
+
+    assert first_admin.is_active is True
+    assert second_admin.is_active is True
 
     db.commit.assert_not_called()
     db.refresh.assert_not_called()

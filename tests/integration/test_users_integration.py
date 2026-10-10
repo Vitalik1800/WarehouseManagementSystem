@@ -1294,3 +1294,170 @@ def test_set_user_active_invalid_id(
     assert unchanged_admin is not None
     assert unchanged_admin.role == "admin"
     assert unchanged_admin.is_active is True
+
+
+def test_change_user_role_prevents_self_demotion(
+    client,
+    db_session,
+):
+    first_admin = User(
+        name="First Administrator",
+        username=f"self_demotion_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        name="Second Administrator",
+        username=f"other_admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    db_session.add_all([first_admin, second_admin])
+    db_session.commit()
+
+    first_admin_id = first_admin.id
+    second_admin_id = second_admin.id
+
+    token = create_access_token(user_id=first_admin_id)
+
+    response = client.patch(
+        f"/users/{first_admin_id}/role",
+        json={"role": "worker"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 409, response.text
+    assert "понизити свою роль" in response.json()["detail"]
+
+    db_session.expire_all()
+
+    unchanged_admin = db_session.get(User, first_admin_id)
+    other_admin = db_session.get(User, second_admin_id)
+
+    assert unchanged_admin is not None
+    assert unchanged_admin.role == "admin"
+    assert unchanged_admin.is_active is True
+
+    assert other_admin is not None
+    assert other_admin.role == "admin"
+    assert other_admin.is_active is True
+
+
+def test_deactivate_user_prevents_self_deactivation(
+    client,
+    db_session,
+):
+    first_admin = User(
+        name="First Administrator",
+        username=f"self_deactivate_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        name="Second Administrator",
+        username=f"other_admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    db_session.add_all([first_admin, second_admin])
+    db_session.commit()
+
+    first_admin_id = first_admin.id
+    second_admin_id = second_admin.id
+
+    token = create_access_token(user_id=first_admin_id)
+
+    response = client.patch(
+        f"/users/{first_admin_id}/deactivate",
+        headers={
+            "Authorization": f"Bearer {token}"
+        },
+    )
+
+    assert response.status_code == 409, response.text
+    assert "деактивувати власний" in response.json()["detail"]
+
+    db_session.expire_all()
+
+    unchanged_admin = db_session.get(User, first_admin_id)
+    other_admin = db_session.get(User, second_admin_id)
+
+    assert unchanged_admin is not None
+    assert unchanged_admin.role == "admin"
+    assert unchanged_admin.is_active is True
+
+    assert other_admin is not None
+    assert other_admin.role == "admin"
+    assert other_admin.is_active is True
+
+
+def test_demoted_admin_existing_token_loses_admin_access(
+    client,
+    db_session,
+):
+    first_admin = User(
+        name="First Administrator",
+        username=f"demoted_admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        name="Second Administrator",
+        username=f"acting_admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    db_session.add_all([first_admin, second_admin])
+    db_session.commit()
+
+    first_admin_id = first_admin.id
+    second_admin_id = second_admin.id
+
+    old_token = create_access_token(user_id=first_admin_id)
+    acting_token = create_access_token(user_id=second_admin_id)
+
+    # До зміни ролі перший адміністратор має доступ.
+    before_response = client.get(
+        "/users",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+
+    assert before_response.status_code == 200
+
+    # Другий адміністратор понижує роль першого.
+    demotion_response = client.patch(
+        f"/users/{first_admin_id}/role",
+        json={"role": "worker"},
+        headers={"Authorization": f"Bearer {acting_token}"},
+    )
+
+    assert demotion_response.status_code == 200
+    assert demotion_response.json()["role"] == "worker"
+
+    # Старий JWT більше не надає адміністративних прав.
+    after_response = client.get(
+        "/users",
+        headers={"Authorization": f"Bearer {old_token}"},
+    )
+
+    assert after_response.status_code == 403
+
+    db_session.expire_all()
+
+    demoted_user = db_session.get(User, first_admin_id)
+
+    assert demoted_user is not None
+    assert demoted_user.role == "worker"
+    assert demoted_user.is_active is True

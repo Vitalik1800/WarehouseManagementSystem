@@ -14,8 +14,11 @@ from backend.app.services.user_service import (
     UserService,
     UserNotFoundError,
     UsernameAlreadyExistsError,
-    LastActiveAdminError
+    LastActiveAdminError,
+    SelfAdministrativeActionError
 )
+
+from backend.app.models.user import User
 
 
 router = APIRouter(
@@ -126,14 +129,19 @@ def update_user(
 def change_user_role(
     user_id: Annotated[int, Path(ge=1)],
     data: UserRoleUpdate,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    current_admin: Annotated[
+        User,
+        Depends(require_roles("admin"))
+    ]
 ) -> UserResponse:
     service = UserService(db)
 
     try:
         user = service.change_user_role(
             user_id=user_id,
-            data=data
+            data=data,
+            actor_id=current_admin.id
         )
 
     except UserNotFoundError as exc:
@@ -143,6 +151,12 @@ def change_user_role(
         ) from exc
 
     except LastActiveAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
+
+    except SelfAdministrativeActionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc)
@@ -200,14 +214,19 @@ def activate_user(
 )
 def deactivate_user(
     user_id: Annotated[int, Path(ge=1)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    current_admin: Annotated[
+        User,
+        Depends(require_roles("admin"))
+    ]
 ) -> UserResponse:
     service = UserService(db)
 
     try:
         user = service.set_user_active(
             user_id=user_id,
-            is_active=False
+            is_active=False,
+            actor_id=current_admin.id
         )
     except UserNotFoundError as exc:
         raise HTTPException(
@@ -215,6 +234,11 @@ def deactivate_user(
             detail=str(exc)
         ) from exc
     except LastActiveAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
+    except SelfAdministrativeActionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc)

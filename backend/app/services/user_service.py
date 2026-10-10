@@ -18,6 +18,11 @@ class LastActiveAdminError(Exception):
     pass
 
 
+class SelfAdministrativeActionError(Exception):
+    """Заборонена адміністративна операція над власним обліковим записом."""
+    pass
+
+
 class UserService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -83,9 +88,10 @@ class UserService:
             raise
 
     def change_user_role(
-            self,
-            user_id: int,
-            data: UserRoleUpdate
+        self,
+        user_id: int,
+        data: UserRoleUpdate,
+        actor_id: int | None = None
     ) -> User:
         try:
             # Отримуємо блокування активних адміністраторів.
@@ -100,6 +106,17 @@ class UserService:
             if user.role == data.role:
                 self.db.commit()
                 return user
+
+            # Заборона самостійного пониження адміністратора.
+            if (
+                actor_id is not None
+                and user.id == actor_id
+                and user.role == "admin"
+                and data.role == "worker"
+            ):
+                raise SelfAdministrativeActionError(
+                    "Адміністратор не може самостійно понизити свою роль"
+                )
 
             # Захист останнього активного адміністратора.
             if (
@@ -127,7 +144,8 @@ class UserService:
     def set_user_active(
         self,
         user_id: int,
-        is_active: bool
+        is_active: bool,
+        actor_id: int | None = None
     ) -> User:
         try:
             active_admins = (
@@ -146,13 +164,24 @@ class UserService:
                 self.db.commit()
                 return user
 
+            # Заборона самодеактивації адміністратора.
+            if (
+                actor_id is not None
+                and user.id == actor_id
+                and user.role == "admin"
+                and not is_active
+            ):
+                raise SelfAdministrativeActionError(
+                    "Адміністратор не може деактивувати власний обліковий запис"
+                )
+
             # Заборона деактивації останнього
             # активного адміністратора.
             if (
-                    not is_active
-                    and user.role == "admin"
-                    and user.is_active
-                    and len(active_admins) <= 1
+                not is_active
+                and user.role == "admin"
+                and user.is_active
+                and len(active_admins) <= 1
             ):
                 raise LastActiveAdminError(
                     "Не можна деактивувати останнього "
