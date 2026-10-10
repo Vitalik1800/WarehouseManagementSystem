@@ -24,9 +24,9 @@ class UserService:
         self.users = UserRepository(db)
 
     def update_user(
-        self,
-        user_id: int,
-        data: UserUpdate
+            self,
+            user_id: int,
+            data: UserUpdate
     ) -> User:
         user = self.users.get_by_id(user_id)
 
@@ -43,8 +43,8 @@ class UserService:
         new_username = changes.get("username")
 
         if (
-            new_username is not None
-            and new_username != user.username
+                new_username is not None
+                and new_username != user.username
         ):
             existing_user = self.users.get_by_username(
                 new_username
@@ -68,9 +68,9 @@ class UserService:
             self.db.rollback()
 
             if (
-                new_username is not None
-                and self.users.get_by_username(new_username)
-                is not None
+                    new_username is not None
+                    and self.users.get_by_username(new_username)
+                    is not None
             ):
                 raise UsernameAlreadyExistsError(
                     "Користувач із таким логіном уже існує"
@@ -83,9 +83,9 @@ class UserService:
             raise
 
     def change_user_role(
-        self,
-        user_id: int,
-        data: UserRoleUpdate
+            self,
+            user_id: int,
+            data: UserRoleUpdate
     ) -> User:
         try:
             # Отримуємо блокування активних адміністраторів.
@@ -103,10 +103,10 @@ class UserService:
 
             # Захист останнього активного адміністратора.
             if (
-                user.role == "admin"
-                and user.is_active
-                and data.role == "worker"
-                and len(active_admins) <= 1
+                    user.role == "admin"
+                    and user.is_active
+                    and data.role == "worker"
+                    and len(active_admins) <= 1
             ):
                 raise LastActiveAdminError(
                     "Не можна змінити роль останнього "
@@ -114,6 +114,52 @@ class UserService:
                 )
 
             user.role = data.role
+
+            self.db.commit()
+            self.db.refresh(user)
+
+            return user
+
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def set_user_active(
+        self,
+        user_id: int,
+        is_active: bool
+    ) -> User:
+        try:
+            active_admins = (
+                self.users.get_active_admins_for_update()
+            )
+
+            user = self.users.get_by_id(user_id)
+
+            if user is None:
+                raise UserNotFoundError(
+                    "Користувача не знайдено"
+                )
+
+            # Повторна активація або деактивація.
+            if user.is_active == is_active:
+                self.db.commit()
+                return user
+
+            # Заборона деактивації останнього
+            # активного адміністратора.
+            if (
+                    not is_active
+                    and user.role == "admin"
+                    and user.is_active
+                    and len(active_admins) <= 1
+            ):
+                raise LastActiveAdminError(
+                    "Не можна деактивувати останнього "
+                    "активного адміністратора"
+                )
+
+            user.is_active = is_active
 
             self.db.commit()
             self.db.refresh(user)

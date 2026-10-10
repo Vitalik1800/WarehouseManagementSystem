@@ -811,4 +811,486 @@ def test_change_user_role_same_role(
     assert unchanged_worker.role == "worker"
     assert unchanged_worker.name == "Warehouse Worker"
     assert unchanged_worker.password_hash == "test_hash"
-    
+
+
+def test_deactivate_worker_admin_success(
+    client,
+    db_session
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.commit()
+
+    worker_id = worker.id
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{worker_id}/deactivate",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert data["id"] == worker_id
+    assert data["role"] == "worker"
+    assert data["is_active"] is False
+    assert "password_hash" not in data
+    assert "password" not in data
+
+    db_session.expire_all()
+
+    updated_worker = db_session.get(User, worker_id)
+
+    assert updated_worker is not None
+    assert updated_worker.is_active is False
+    assert updated_worker.role == "worker"
+    assert updated_worker.password_hash == "test_hash"
+
+
+def test_activate_worker_admin_success(
+    client,
+    db_session
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    worker = User(
+        name="Inactive Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=False
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.commit()
+
+    worker_id = worker.id
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{worker_id}/activate",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert data["id"] == worker_id
+    assert data["role"] == "worker"
+    assert data["is_active"] is True
+    assert "password_hash" not in data
+    assert "password" not in data
+
+    db_session.expire_all()
+
+    updated_worker = db_session.get(User, worker_id)
+
+    assert updated_worker is not None
+    assert updated_worker.is_active is True
+    assert updated_worker.role == "worker"
+    assert updated_worker.password_hash == "test_hash"
+
+
+def test_deactivated_worker_existing_token_rejected(
+    client,
+    db_session
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.commit()
+
+    admin_token = create_access_token(user_id=admin.id)
+    worker_token = create_access_token(user_id=worker.id)
+
+    admin_headers = {
+        "Authorization": f"Bearer {admin_token}"
+    }
+    worker_headers = {
+        "Authorization": f"Bearer {worker_token}"
+    }
+
+    # До деактивації JWT дійсний, але працівник не має прав адміністратора.
+    before = client.get(
+        "/users",
+        headers=worker_headers
+    )
+
+    assert before.status_code == 403, before.text
+
+    # Адміністратор деактивує працівника.
+    deactivate_response = client.patch(
+        f"/users/{worker.id}/deactivate",
+        headers=admin_headers
+    )
+
+    assert deactivate_response.status_code == 200
+    assert deactivate_response.json()["is_active"] is False
+
+    # Старий JWT більше не повинен надавати доступ.
+    after = client.get(
+        "/users",
+        headers=worker_headers
+    )
+
+    assert after.status_code == 401, after.text
+    assert after.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_deactivate_last_active_admin_conflict(
+    client,
+    db_session
+):
+    admin = User(
+        name="Last Administrator",
+        username=f"last_admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.commit()
+
+    admin_id = admin.id
+    token = create_access_token(user_id=admin_id)
+
+    response = client.patch(
+        f"/users/{admin_id}/deactivate",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 409, response.text
+    assert "detail" in response.json()
+
+    db_session.expire_all()
+
+    unchanged_admin = db_session.get(User, admin_id)
+
+    assert unchanged_admin is not None
+    assert unchanged_admin.role == "admin"
+    assert unchanged_admin.is_active is True
+
+
+def test_deactivate_admin_when_another_active_admin_exists(
+    client,
+    db_session
+):
+    first_admin = User(
+        name="First Administrator",
+        username=f"admin_first_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    second_admin = User(
+        name="Second Administrator",
+        username=f"admin_second_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add_all([first_admin, second_admin])
+    db_session.commit()
+
+    first_admin_id = first_admin.id
+    second_admin_id = second_admin.id
+
+    token = create_access_token(user_id=first_admin_id)
+
+    response = client.patch(
+        f"/users/{second_admin_id}/deactivate",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    assert data["id"] == second_admin_id
+    assert data["role"] == "admin"
+    assert data["is_active"] is False
+    assert "password_hash" not in data
+
+    db_session.expire_all()
+
+    updated_first = db_session.get(User, first_admin_id)
+    updated_second = db_session.get(User, second_admin_id)
+
+    assert updated_first is not None
+    assert updated_second is not None
+
+    assert updated_first.role == "admin"
+    assert updated_first.is_active is True
+
+    assert updated_second.role == "admin"
+    assert updated_second.is_active is False
+
+
+@pytest.mark.parametrize(
+    "initial_state, endpoint, expected_state",
+    [
+        (True, "activate", True),
+        (False, "deactivate", False)
+    ]
+)
+def test_set_user_active_idempotent(
+    client,
+    db_session,
+    initial_state,
+    endpoint,
+    expected_state
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=initial_state
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.commit()
+
+    worker_id = worker.id
+    token = create_access_token(user_id=admin.id)
+
+    headers = {
+        "Authorization": f"Bearer {token}"
+    }
+
+    for _ in range(2):
+        response = client.patch(
+            f"/users/{worker_id}/{endpoint}",
+            headers=headers
+        )
+
+        assert response.status_code == 200, response.text
+
+        data = response.json()
+
+        assert data["id"] == worker_id
+        assert data["role"] == "worker"
+        assert data["is_active"] is expected_state
+        assert "password_hash" not in data
+
+    db_session.expire_all()
+
+    unchanged_worker = db_session.get(User, worker_id)
+
+    assert unchanged_worker is not None
+    assert unchanged_worker.is_active is expected_state
+    assert unchanged_worker.role == "worker"
+    assert unchanged_worker.password_hash == "test_hash"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["activate", "deactivate"]
+)
+def test_set_user_active_missing_token(
+    client,
+    endpoint
+):
+    response = client.patch(
+        f"/users/1/{endpoint}"
+    )
+
+    assert response.status_code == 401
+    assert "detail" in response.json()
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["activate", "deactivate"],
+)
+def test_set_user_active_worker_forbidden(
+    client,
+    db_session,
+    endpoint
+):
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    target = User(
+        name="Target Worker",
+        username=f"target_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([worker, target])
+    db_session.commit()
+
+    target_id = target.id
+    token = create_access_token(user_id=worker.id)
+
+    response = client.patch(
+        f"/users/{target_id}/{endpoint}",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 403, response.text
+    assert "detail" in response.json()
+
+    db_session.expire_all()
+
+    unchanged_target = db_session.get(User, target_id)
+
+    assert unchanged_target is not None
+    assert unchanged_target.is_active is True
+    assert unchanged_target.role == "worker"
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["activate", "deactivate"]
+)
+def test_set_user_active_not_found(
+    client,
+    db_session,
+    endpoint
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.commit()
+
+    admin_id = admin.id
+    token = create_access_token(user_id=admin_id)
+
+    response = client.patch(
+        f"/users/2147483647/{endpoint}",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 404, response.text
+    assert "detail" in response.json()
+
+    db_session.expire_all()
+
+    unchanged_admin = db_session.get(User, admin_id)
+
+    assert unchanged_admin is not None
+    assert unchanged_admin.role == "admin"
+    assert unchanged_admin.is_active is True
+
+
+@pytest.mark.parametrize(
+    "endpoint",
+    ["activate", "deactivate"]
+)
+@pytest.mark.parametrize(
+    "user_id",
+    ["abc", "0", "-1"]
+)
+def test_set_user_active_invalid_id(
+    client,
+    db_session,
+    endpoint,
+    user_id
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.commit()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{user_id}/{endpoint}",
+        headers={
+            "Authorization": f"Bearer {token}"
+        }
+    )
+
+    assert response.status_code == 422, response.text
+    assert isinstance(response.json()["detail"], list)
+
+    db_session.expire_all()
+
+    unchanged_admin = db_session.get(User, admin.id)
+
+    assert unchanged_admin is not None
+    assert unchanged_admin.role == "admin"
+    assert unchanged_admin.is_active is True

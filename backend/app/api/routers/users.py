@@ -149,3 +149,75 @@ def change_user_role(
         ) from exc
 
     return UserResponse.model_validate(user)
+
+
+@router.patch(
+    "/{user_id}/activate",
+    dependencies=[Depends(require_roles("admin"))],
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Activate user (admin only)",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+        422: {"description": "Validation error"}
+    }
+)
+def activate_user(
+    user_id: Annotated[int, Path(ge=1)],
+    db: Annotated[Session, Depends(get_db)]
+) -> UserResponse:
+    service = UserService(db)
+
+    try:
+        user = service.set_user_active(
+            user_id=user_id,
+            is_active=True
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc)
+        ) from exc
+
+    return UserResponse.model_validate(user)
+
+
+@router.patch(
+    "/{user_id}/deactivate",
+    dependencies=[Depends(require_roles("admin"))],
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Deactivate user (admin only)",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+        409: {"description": "Cannot deactivate last active admin"},
+        422: {"description": "Validation error"}
+    }
+)
+def deactivate_user(
+    user_id: Annotated[int, Path(ge=1)],
+    db: Annotated[Session, Depends(get_db)]
+) -> UserResponse:
+    service = UserService(db)
+
+    try:
+        user = service.set_user_active(
+            user_id=user_id,
+            is_active=False
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc)
+        ) from exc
+    except LastActiveAdminError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
+
+    return UserResponse.model_validate(user)
