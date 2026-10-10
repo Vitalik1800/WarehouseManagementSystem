@@ -18,8 +18,6 @@ jobs:
         env:
           MYSQL_ROOT_PASSWORD: root_test_password
           MYSQL_DATABASE: warehouse_test_db
-          MYSQL_USER: warehouse_test_user
-          MYSQL_PASSWORD: warehouse_test_password
         ports:
           - 3306:3306
         options: >-
@@ -31,7 +29,7 @@ jobs:
     env:
       APP_ENV: testing
       DEBUG: "false"
-      DATABASE_URL: mysql+pymysql://warehouse_test_user:warehouse_test_password@127.0.0.1:3306/warehouse_test_db?charset=utf8mb4
+      DATABASE_URL: mysql+pymysql://warehouse_test_user:warehouse_test_password@127.0.0.1:3306/warehouse_db?charset=utf8mb4
       JWT_SECRET_KEY: github_actions_testing_secret_key_2026_only
       JWT_ALGORITHM: HS256
 
@@ -49,8 +47,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
 
-      - name: Apply database migrations
+      - name: Initialize MySQL databases and user
+        run: |
+          mysql -h 127.0.0.1 -uroot -proot_test_password <<'SQL'
+          CREATE DATABASE IF NOT EXISTS warehouse_db CHARACTER SET utf8mb4;
+          CREATE DATABASE IF NOT EXISTS warehouse_test_db CHARACTER SET utf8mb4;
+          CREATE USER IF NOT EXISTS 'warehouse_test_user'@'%' IDENTIFIED BY 'warehouse_test_password';
+          GRANT ALL PRIVILEGES ON warehouse_db.* TO 'warehouse_test_user'@'%';
+          GRANT ALL PRIVILEGES ON warehouse_test_db.* TO 'warehouse_test_user'@'%';
+          SQL
+
+      - name: Apply application database migrations
         run: python -m alembic upgrade head
+
+      - name: Apply test database migrations
+        run: |
+          python -m alembic \
+            -x db_url="mysql+pymysql://warehouse_test_user:warehouse_test_password@127.0.0.1:3306/warehouse_test_db?charset=utf8mb4" \
+            upgrade head
 
       - name: Run tests with coverage
         run: |
