@@ -138,3 +138,114 @@ def test_list_users_pagination_success(client, db_session):
     assert second_ids == sorted(second_ids)
     assert first_ids[-1] < second_ids[0]
     assert set(first_ids).isdisjoint(second_ids)
+
+def test_get_user_by_id_admin_success(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.get(
+        f"/users/{worker.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["id"] == worker.id
+    assert data["username"] == worker.username
+    assert data["role"] == "worker"
+    assert data["is_active"] is True
+    assert "password_hash" not in data
+    assert "password" not in data
+
+
+def test_get_user_by_id_not_found(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.get(
+        "/users/2147483647",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_get_user_by_id_worker_forbidden(client, db_session):
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add(worker)
+    db_session.flush()
+
+    token = create_access_token(user_id=worker.id)
+
+    response = client.get(
+        f"/users/{worker.id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_user_by_id_missing_token(client):
+    response = client.get("/users/1")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize("user_id", ["abc", "0", "-1"])
+def test_get_user_by_id_invalid_id(client, db_session, user_id):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.get(
+        f"/users/{user_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 422
+    

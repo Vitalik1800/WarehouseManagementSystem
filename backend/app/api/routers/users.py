@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import require_roles
@@ -30,3 +30,31 @@ def list_users(
 ) -> list[UserResponse]:
     users = UserRepository(db).get_all(offset=offset, limit=limit)
     return [UserResponse.model_validate(user) for user in users]
+
+
+@router.get(
+    "/{user_id}",
+    dependencies=[Depends(require_roles("admin"))],
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get user by ID (admin only)",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+        422: {"description": "Validation error"}
+    }
+)
+def get_user(
+    user_id: Annotated[int, Path(ge=1)],
+    db: Annotated[Session, Depends(get_db)]
+) -> UserResponse:
+    user = UserRepository(db).get_by_id(user_id)
+
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Користувача не знайдено"
+        )
+
+    return UserResponse.model_validate(user)
