@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.models.user import User
@@ -23,12 +23,12 @@ class UserRepository:
         return self.db.scalar(statement)
 
     def create(
-        self,
-        *,
-        name: str,
-        username: str,
-        password_hash: str,
-        role: str = "worker"
+            self,
+            *,
+            name: str,
+            username: str,
+            password_hash: str,
+            role: str = "worker"
     ) -> User:
         """Додає нового користувача до поточної транзакції."""
         user = User(
@@ -45,10 +45,10 @@ class UserRepository:
         return user
 
     def get_all(
-        self,
-        *,
-        offset: int = 0,
-        limit: int = 50
+            self,
+            *,
+            offset: int = 0,
+            limit: int = 50
     ) -> list[User]:
         """Повертає користувачів із підтримкою пагінації."""
 
@@ -63,6 +63,34 @@ class UserRepository:
             .order_by(User.id)
             .offset(offset)
             .limit(limit)
+        )
+
+        return list(self.db.scalars(statement).all())
+
+    def count_active_admins(self) -> int:
+        """Повертає кількість активних адміністраторів."""
+
+        statement = (
+            select(func.count(User.id))
+            .where(
+                User.role == "admin",
+                User.is_active.is_(True)
+            )
+        )
+
+        return self.db.scalar(statement) or 0
+
+    def get_active_admins_for_update(self) -> list[User]:
+        """Блокує активних адміністраторів до завершення транзакції."""
+
+        statement = (
+            select(User)
+            .where(
+                User.role == "admin",
+                User.is_active.is_(True)
+            )
+            .order_by(User.id)
+            .with_for_update()
         )
 
         return list(self.db.scalars(statement).all())

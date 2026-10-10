@@ -8,12 +8,13 @@ from backend.app.db.session import get_db
 from backend.app.repositories.user_repository import UserRepository
 from backend.app.schemas.auth import UserResponse
 
-from backend.app.schemas.users import UserUpdate
+from backend.app.schemas.users import UserUpdate, UserRoleUpdate
 
 from backend.app.services.user_service import (
     UserService,
     UserNotFoundError,
-    UsernameAlreadyExistsError
+    UsernameAlreadyExistsError,
+    LastActiveAdminError
 )
 
 
@@ -100,6 +101,48 @@ def update_user(
             detail=str(exc)
         ) from exc
     except UsernameAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
+
+    return UserResponse.model_validate(user)
+
+
+@router.patch(
+    "/{user_id}/role",
+    dependencies=[Depends(require_roles("admin"))],
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Change user role (admin only)",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "User not found"},
+        409: {"description": "Cannot demote last active admin"},
+        422: {"description": "Validation error"}
+    }
+)
+def change_user_role(
+    user_id: Annotated[int, Path(ge=1)],
+    data: UserRoleUpdate,
+    db: Annotated[Session, Depends(get_db)]
+) -> UserResponse:
+    service = UserService(db)
+
+    try:
+        user = service.change_user_role(
+            user_id=user_id,
+            data=data
+        )
+
+    except UserNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc)
+        ) from exc
+
+    except LastActiveAdminError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc)

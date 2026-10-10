@@ -10,6 +10,11 @@ from backend.app.services.user_service import (
     UsernameAlreadyExistsError,
 )
 
+from backend.app.schemas.users import UserRoleUpdate
+from backend.app.services.user_service import LastActiveAdminError
+
+from backend.app.services.user_service import UserNotFoundError
+
 
 def test_update_user_integrity_error_duplicate_username():
     db = Mock()
@@ -61,4 +66,152 @@ def test_update_user_integrity_error_duplicate_username():
         "taken_username"
     )
     assert service.users.get_by_username.call_count == 2
-    
+
+
+def test_change_user_role_prevents_last_active_admin_demotion():
+    db = Mock()
+    service = UserService(db)
+
+    admin = User(
+        id=1,
+        name="Last Administrator",
+        username="last_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[admin]
+    )
+    service.users.get_by_id = Mock(return_value=admin)
+
+    with pytest.raises(LastActiveAdminError):
+        service.change_user_role(
+            user_id=1,
+            data=UserRoleUpdate(role="worker"),
+        )
+
+    assert admin.role == "admin"
+
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_change_user_role_promotes_worker_to_admin():
+    db = Mock()
+    service = UserService(db)
+
+    worker = User(
+        id=2,
+        name="Warehouse Worker",
+        username="worker",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[]
+    )
+    service.users.get_by_id = Mock(return_value=worker)
+
+    result = service.change_user_role(
+        user_id=2,
+        data=UserRoleUpdate(role="admin"),
+    )
+
+    assert result.role == "admin"
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once_with(worker)
+    db.rollback.assert_not_called()
+
+
+def test_change_user_role_same_role():
+    db = Mock()
+    service = UserService(db)
+
+    worker = User(
+        id=2,
+        name="Warehouse Worker",
+        username="worker",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[]
+    )
+    service.users.get_by_id = Mock(return_value=worker)
+
+    result = service.change_user_role(
+        user_id=2,
+        data=UserRoleUpdate(role="worker"),
+    )
+
+    assert result.role == "worker"
+    db.commit.assert_called_once()
+    db.refresh.assert_not_called()
+    db.rollback.assert_not_called()
+
+
+def test_change_user_role_user_not_found():
+    db = Mock()
+    service = UserService(db)
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[]
+    )
+    service.users.get_by_id = Mock(return_value=None)
+
+    with pytest.raises(UserNotFoundError):
+        service.change_user_role(
+            user_id=999,
+            data=UserRoleUpdate(role="admin"),
+        )
+
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once()
+
+
+def test_change_user_role_demotes_admin_when_another_admin_exists():
+    db = Mock()
+    service = UserService(db)
+
+    first_admin = User(
+        id=1,
+        name="First Administrator",
+        username="first_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    second_admin = User(
+        id=2,
+        name="Second Administrator",
+        username="second_admin",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True,
+    )
+
+    service.users.get_active_admins_for_update = Mock(
+        return_value=[first_admin, second_admin]
+    )
+    service.users.get_by_id = Mock(
+        return_value=first_admin
+    )
+
+    result = service.change_user_role(
+        user_id=1,
+        data=UserRoleUpdate(role="worker"),
+    )
+
+    assert result.role == "worker"
+    assert second_admin.role == "admin"
+
+    db.commit.assert_called_once()
+    db.refresh.assert_called_once_with(first_admin)
+    db.rollback.assert_not_called()
