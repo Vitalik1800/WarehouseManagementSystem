@@ -249,3 +249,264 @@ def test_get_user_by_id_invalid_id(client, db_session, user_id):
 
     assert response.status_code == 422
     
+
+def test_patch_user_admin_success(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+    worker = User(
+        name="Original Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+    new_username = f"updated_{uuid4().hex[:12]}"
+
+    response = client.patch(
+        f"/users/{worker.id}",
+        json={
+            "name": "Updated Worker",
+            "username": new_username
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+    assert data["id"] == worker.id
+    assert data["name"] == "Updated Worker"
+    assert data["username"] == new_username
+    assert data["role"] == "worker"
+    assert data["is_active"] is True
+    assert "password_hash" not in data
+
+    db_session.expire_all()
+    updated = db_session.get(User, worker.id)
+
+    assert updated.name == "Updated Worker"
+    assert updated.username == new_username
+    assert updated.role == "worker"
+    assert updated.password_hash == "test_hash"
+
+
+def test_patch_user_not_found(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        "/users/2147483647",
+        json={"name": "Updated User"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 404
+
+
+def test_patch_user_duplicate_username(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{worker.id}",
+        json={"username": admin.username},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 409
+    db_session.refresh(worker)
+    assert worker.username != admin.username
+
+
+def test_patch_user_worker_forbidden(client, db_session):
+    worker = User(
+        name="Warehouse Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add(worker)
+    db_session.flush()
+
+    token = create_access_token(user_id=worker.id)
+
+    response = client.patch(
+        f"/users/{worker.id}",
+        json={"name": "Unauthorized Change"},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 403
+
+
+def test_patch_user_missing_token(client):
+    response = client.patch(
+        "/users/1",
+        json={"name": "Unauthorized Change"}
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"name": None},
+        {"username": None},
+        {"name": "A"},
+        {"username": "invalid username"},
+        {"role": "admin"},
+        {"is_active": False},
+        {"password_hash": "malicious"}
+    ]
+)
+def test_patch_user_invalid_payload(client, db_session, payload):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{admin.id}",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 422
+
+
+def test_patch_user_empty_payload(client, db_session):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    db_session.add(admin)
+    db_session.flush()
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{admin.id}",
+        json={},
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == admin.username
+
+
+@pytest.mark.parametrize(
+    "update_type",
+    ["name_only", "username_only", "same_username"]
+)
+def test_patch_user_partial_update(
+    client,
+    db_session,
+    update_type
+):
+    admin = User(
+        name="Administrator",
+        username=f"admin_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="admin",
+        is_active=True
+    )
+
+    worker = User(
+        name="Original Worker",
+        username=f"worker_{uuid4().hex[:12]}",
+        password_hash="test_hash",
+        role="worker",
+        is_active=True
+    )
+
+    db_session.add_all([admin, worker])
+    db_session.flush()
+
+    original_name = worker.name
+    original_username = worker.username
+
+    if update_type == "name_only":
+        payload = {"name": "Updated Name"}
+    elif update_type == "username_only":
+        payload = {
+            "username": f"updated_{uuid4().hex[:12]}"
+        }
+    else:
+        payload = {"username": original_username}
+
+    token = create_access_token(user_id=admin.id)
+
+    response = client.patch(
+        f"/users/{worker.id}",
+        json=payload,
+        headers={"Authorization": f"Bearer {token}"}
+    )
+
+    assert response.status_code == 200, response.text
+
+    db_session.expire_all()
+    updated = db_session.get(User, worker.id)
+
+    assert updated.name == payload.get(
+        "name",
+        original_name
+    )
+    assert updated.username == payload.get(
+        "username",
+        original_username
+    )
+    assert updated.role == "worker"
+    assert updated.password_hash == "test_hash"
+    

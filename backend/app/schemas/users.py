@@ -1,9 +1,12 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserUpdate(BaseModel):
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(
         default=None,
         min_length=2,

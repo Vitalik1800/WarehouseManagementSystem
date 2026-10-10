@@ -70,3 +70,26 @@ def test_user_status_update_valid(is_active):
 def test_user_status_update_rejects_invalid_value():
     with pytest.raises(ValidationError):
         UserStatusUpdate(is_active="invalid")
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["role", "is_active", "password_hash", "password"]
+)
+def test_user_update_rejects_forbidden_fields(field):
+    with pytest.raises(ValidationError) as exc_info:
+        UserUpdate.model_validate({field: "test"})
+
+    assert any(
+        error["type"] == "extra_forbidden"
+        for error in exc_info.value.errors()
+    )
+
+
+def test_user_update_rejects_mixed_allowed_and_forbidden_fields():
+    with pytest.raises(ValidationError):
+        UserUpdate.model_validate({
+            "name": "Updated User",
+            "role": "admin"
+        })
+        
