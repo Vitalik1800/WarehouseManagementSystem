@@ -7,6 +7,7 @@ from backend.app.api.routers.users import router as users_router
 from backend.app.api.routers.categories import router as categories_router
 from backend.app.api.routers.suppliers import router as suppliers_router
 from backend.app.api.routers.storage_locations import router as locations_router
+from backend.app.api.routers.products import router as products_router
 
 from backend.app.core.config import get_settings
 from backend.app.core.logging_config import (
@@ -40,6 +41,7 @@ app.include_router(users_router)
 app.include_router(categories_router)
 app.include_router(suppliers_router)
 app.include_router(locations_router)
+app.include_router(products_router)
 
 
 @app.get("/", tags=["Система"])
