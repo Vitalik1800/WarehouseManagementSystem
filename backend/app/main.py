@@ -4,6 +4,9 @@ from fastapi import FastAPI
 
 from backend.app.api.routers.auth import router as auth_router
 from backend.app.api.routers.users import router as users_router
+from backend.app.api.routers.categories import router as categories_router
+from backend.app.api.routers.suppliers import router as suppliers_router
+from backend.app.api.routers.storage_locations import router as locations_router
 
 from backend.app.core.config import get_settings
 from backend.app.core.logging_config import (
@@ -16,7 +19,7 @@ logger = get_backend_logger("main")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     logger.info("Запуск API системи управління складом")
 
     yield
@@ -34,6 +37,9 @@ app = FastAPI(
 
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(categories_router)
+app.include_router(suppliers_router)
+app.include_router(locations_router)
 
 
 @app.get("/", tags=["Система"])
