@@ -15,8 +15,10 @@ from backend.app.services.inventory_service import (
     StockMovementNotFoundError,
     StockProductNotFoundError,
     StockQuantityOverflowError,
-    StockSupplierNotFoundError,
+    StockSupplierNotFoundError
 )
+
+from backend.app.schemas.stock_movements import StockBalanceResponse
 
 
 @pytest.fixture
@@ -364,3 +366,178 @@ def test_invalid_list_filters(
 
     assert response.status_code == 422
     mocked.assert_not_called()
+
+
+# ============================================================
+# Stage 7.7 — Stock Balance API tests
+# ============================================================
+
+BALANCE_URL = "/stock-movements/products/{product_id}/balance"
+
+
+def make_stock_balance(
+    product_id=1,
+    quantity="125.375",
+):
+    return StockBalanceResponse(
+        product_id=product_id,
+        sku="SKU-001",
+        name="Test Product",
+        unit="pcs",
+        quantity=Decimal(quantity),
+    )
+
+
+def test_stock_balance_success(client, authorize):
+    authorize(role="worker")
+
+    balance = make_stock_balance()
+
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+        return_value=balance,
+    ) as mocked:
+        response = client.get(
+            BALANCE_URL.format(product_id=1)
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "product_id": 1,
+        "sku": "SKU-001",
+        "name": "Test Product",
+        "unit": "pcs",
+        "quantity": "125.375",
+    }
+
+    mocked.assert_called_once_with(1)
+
+
+@pytest.mark.parametrize(
+    "role,expected",
+    [
+        ("admin", 200),
+        ("worker", 200),
+        ("guest", 403),
+    ],
+)
+def test_stock_balance_role_access(
+    client,
+    authorize,
+    role,
+    expected,
+):
+    authorize(role=role)
+
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+        return_value=make_stock_balance(),
+    ) as mocked:
+        response = client.get(
+            BALANCE_URL.format(product_id=1)
+        )
+
+    assert response.status_code == expected
+
+    if expected == 200:
+        mocked.assert_called_once_with(1)
+    else:
+        mocked.assert_not_called()
+
+
+def test_stock_balance_unauthorized(client):
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+    ) as mocked:
+        response = client.get(
+            BALANCE_URL.format(product_id=1)
+        )
+
+    assert response.status_code == 401
+    mocked.assert_not_called()
+
+
+def test_stock_balance_product_not_found(
+    client,
+    authorize,
+):
+    authorize(role="worker")
+
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+        side_effect=StockProductNotFoundError(
+            "Product not found"
+        ),
+    ) as mocked:
+        response = client.get(
+            BALANCE_URL.format(product_id=999)
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Product not found"
+
+    mocked.assert_called_once_with(999)
+
+
+@pytest.mark.parametrize(
+    "product_id",
+    [
+        "0",
+        "-1",
+        "abc",
+    ],
+)
+def test_stock_balance_invalid_product_id(
+    client,
+    authorize,
+    product_id,
+):
+    authorize(role="worker")
+
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+    ) as mocked:
+        response = client.get(
+            BALANCE_URL.format(product_id=product_id)
+        )
+
+    assert response.status_code == 422
+    mocked.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "quantity",
+    [
+        "0.000",
+        "0.001",
+        "125.375",
+        "99999999999.999",
+    ],
+)
+def test_stock_balance_decimal_precision(
+    client,
+    authorize,
+    quantity,
+):
+    authorize(role="worker")
+
+    with patch.object(
+        InventoryService,
+        "get_stock_balance",
+        return_value=make_stock_balance(
+            quantity=quantity
+        ),
+    ):
+        response = client.get(
+            BALANCE_URL.format(product_id=1)
+        )
+
+    assert response.status_code == 200
+    assert Decimal(
+        response.json()["quantity"]
+    ) == Decimal(quantity)

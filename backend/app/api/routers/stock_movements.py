@@ -14,6 +14,7 @@ from backend.app.core.permissions import require_roles
 from backend.app.db.session import get_db
 from backend.app.models.user import User
 from backend.app.schemas.stock_movements import (
+    StockBalanceResponse,
     StockMovementCreate,
     StockMovementResponse
 )
@@ -51,7 +52,7 @@ def _create_movement(
     service = InventoryService(db)
 
     try:
-        movements = service.create_movement(
+        movement = service.create_movement(
             data=data,
             user_id=current_user.id
         )
@@ -74,7 +75,7 @@ def _create_movement(
             detail=str(exc),
         ) from exc
 
-    return StockMovementResponse.model_validate(movements)
+    return StockMovementResponse.model_validate(movement)
 
 
 @router.post(
@@ -199,6 +200,37 @@ def list_stock_movements(
         StockMovementResponse.model_validate(movement)
         for movement in movements
     ]
+
+
+@router.get(
+    "/products/{product_id}/balance",
+    dependencies=[
+        Depends(require_roles("admin", "worker"))
+    ],
+    response_model=StockBalanceResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get product stock balance",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        404: {"description": "Product not found"},
+        422: {"description": "Validation error"}
+    }
+)
+def get_product_stock_balance(
+    product_id: Annotated[int, Path(ge=1)],
+    db: DatabaseSession
+) -> StockBalanceResponse:
+    service = InventoryService(db)
+
+    try:
+        return service.get_stock_balance(product_id)
+
+    except StockProductNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get(
