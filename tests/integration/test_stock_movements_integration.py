@@ -1,10 +1,13 @@
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from backend.app.core.security import create_access_token
 from backend.app.db.session import get_db
@@ -539,3 +542,330 @@ def test_failed_journal_insert_rolls_back_stock(
 
     assert actual_quantity == initial_quantity
     assert actual_movements == []
+
+
+@pytest.mark.parametrize(
+    "movement_type,note",
+    [
+        ("issue", None),
+        ("writeoff", "Damaged goods"),
+    ],
+)
+def test_failed_outgoing_journal_insert_rolls_back_stock(
+        db_session,
+        product,
+        movement_type,
+        note,
+):
+    product_id = product.id
+
+    product.quantity = Decimal("100.000")
+    db_session.flush()
+    db_session.commit()
+
+    service = InventoryService(db_session)
+
+    initial_quantity = get_stored_quantity(
+        db_session,
+        product_id,
+    )
+    initial_movements = get_stored_movements(
+        db_session,
+        product_id,
+    )
+
+    assert initial_quantity == Decimal("100.000")
+    assert initial_movements == []
+
+    data = StockMovementCreate(
+        product_id=product_id,
+        movement_type=movement_type,
+        quantity=Decimal("25.000"),
+        note=note,
+    )
+
+    invalid_user_id = 2147483647
+
+    with pytest.raises(IntegrityError):
+        service.create_movement(
+            data=data,
+            user_id=invalid_user_id,
+        )
+
+    assert get_stored_quantity(
+        db_session,
+        product_id,
+    ) == initial_quantity
+
+    assert get_stored_movements(
+        db_session,
+        product_id,
+    ) == initial_movements
+
+
+def test_concurrent_issues_do_not_oversell(test_engine):
+    suffix = uuid4().hex[:12]
+
+    # Dedicated committed fixtures visible to both connections.
+    with Session(test_engine) as session:
+        category = Category(name=f"ConcurrentCategory_{suffix}")
+        location = StorageLocation(
+            name=f"ConcurrentLocation_{suffix}"
+        )
+        user = User(
+            name="Concurrent Inventory Worker",
+            username=f"concurrent_{suffix}",
+            password_hash="test_hash",
+            role="worker",
+            is_active=True,
+        )
+
+        session.add_all([category, location, user])
+        session.flush()
+
+        product = Product(
+            sku=f"CONCURRENT-{suffix}",
+            name="Concurrent Inventory Product",
+            unit="pcs",
+            category_id=category.id,
+            location_id=location.id,
+            quantity=Decimal("100.000"),
+        )
+
+        session.add(product)
+        session.flush()
+
+        product_id = product.id
+        category_id = category.id
+        location_id = location.id
+        user_id = user.id
+
+        session.commit()
+
+    barrier = Barrier(2, timeout=10)
+
+    def issue_stock():
+        with Session(test_engine) as session:
+            service = InventoryService(session)
+
+            # Both workers start their operation together.
+            barrier.wait()
+
+            try:
+                service.create_movement(
+                    data=StockMovementCreate(
+                        product_id=product_id,
+                        movement_type="issue",
+                        quantity=Decimal("70.000"),
+                    ),
+                    user_id=user_id,
+                )
+                return "success"
+            except Exception as exc:
+                from backend.app.services.inventory_service import (
+                    InsufficientStockError,
+                )
+
+                if isinstance(exc, InsufficientStockError):
+                    return "insufficient"
+
+                raise
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(issue_stock)
+                for _ in range(2)
+            ]
+
+            results = [
+                future.result(timeout=20)
+                for future in futures
+            ]
+
+        assert sorted(results) == [
+            "insufficient",
+            "success",
+        ]
+
+        with Session(test_engine) as session:
+            stored_product = session.get(Product, product_id)
+
+            assert stored_product is not None
+            assert stored_product.quantity == Decimal("30.000")
+
+            movements = list(
+                session.scalars(
+                    select(StockMovement).where(
+                        StockMovement.product_id == product_id
+                    )
+                ).all()
+            )
+
+            assert len(movements) == 1
+            assert movements[0].movement_type == "issue"
+            assert movements[0].quantity == Decimal("70.000")
+            assert movements[0].user_id == user_id
+
+    finally:
+        # Cleanup is independent of the test assertions.
+        with Session(test_engine) as session:
+            session.execute(
+                delete(StockMovement).where(
+                    StockMovement.product_id == product_id
+                )
+            )
+            session.execute(
+                delete(Product).where(Product.id == product_id)
+            )
+            session.execute(
+                delete(User).where(User.id == user_id)
+            )
+            session.execute(
+                delete(Category).where(Category.id == category_id)
+            )
+            session.execute(
+                delete(StorageLocation).where(
+                    StorageLocation.id == location_id
+                )
+            )
+            session.commit()
+
+
+def test_concurrent_receipts_do_not_overflow(test_engine):
+    from backend.app.services.inventory_service import (
+        StockQuantityOverflowError,
+    )
+
+    suffix = uuid4().hex[:12]
+    maximum = Decimal("99999999999.999")
+    initial_quantity = maximum - Decimal("10.000")
+
+    with Session(test_engine) as session:
+        category = Category(
+            name=f"ReceiptCategory_{suffix}"
+        )
+        location = StorageLocation(
+            name=f"ReceiptLocation_{suffix}"
+        )
+        user = User(
+            name="Concurrent Receipt Worker",
+            username=f"receipt_{suffix}",
+            password_hash="test_hash",
+            role="worker",
+            is_active=True,
+        )
+
+        session.add_all([category, location, user])
+        session.flush()
+
+        product = Product(
+            sku=f"RECEIPT-{suffix}",
+            name="Concurrent Receipt Product",
+            unit="pcs",
+            category_id=category.id,
+            location_id=location.id,
+            quantity=initial_quantity,
+        )
+
+        session.add(product)
+        session.flush()
+
+        product_id = product.id
+        category_id = category.id
+        location_id = location.id
+        user_id = user.id
+
+        session.commit()
+
+    barrier = Barrier(2, timeout=10)
+
+    def receive_stock():
+        with Session(test_engine) as session:
+            service = InventoryService(session)
+
+            barrier.wait()
+
+            try:
+                service.create_movement(
+                    data=StockMovementCreate(
+                        product_id=product_id,
+                        movement_type="receipt",
+                        quantity=Decimal("7.000"),
+                    ),
+                    user_id=user_id,
+                )
+                return "success"
+
+            except StockQuantityOverflowError:
+                return "overflow"
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = [
+                executor.submit(receive_stock)
+                for _ in range(2)
+            ]
+
+            results = [
+                future.result(timeout=20)
+                for future in futures
+            ]
+
+        assert sorted(results) == [
+            "overflow",
+            "success",
+        ]
+
+        with Session(test_engine) as session:
+            stored_product = session.get(
+                Product,
+                product_id,
+            )
+
+            assert stored_product is not None
+            assert stored_product.quantity == (
+                    initial_quantity + Decimal("7.000")
+            )
+
+            movements = list(
+                session.scalars(
+                    select(StockMovement).where(
+                        StockMovement.product_id == product_id
+                    )
+                ).all()
+            )
+
+            assert len(movements) == 1
+            assert movements[0].movement_type == "receipt"
+            assert movements[0].quantity == Decimal("7.000")
+            assert movements[0].user_id == user_id
+
+    finally:
+        with Session(test_engine) as session:
+            session.execute(
+                delete(StockMovement).where(
+                    StockMovement.product_id == product_id
+                )
+            )
+            session.execute(
+                delete(Product).where(
+                    Product.id == product_id
+                )
+            )
+            session.execute(
+                delete(User).where(
+                    User.id == user_id
+                )
+            )
+            session.execute(
+                delete(Category).where(
+                    Category.id == category_id
+                )
+            )
+            session.execute(
+                delete(StorageLocation).where(
+                    StorageLocation.id == location_id
+                )
+            )
+            session.commit()
