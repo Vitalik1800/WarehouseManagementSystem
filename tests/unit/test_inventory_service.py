@@ -343,3 +343,93 @@ def test_get_stock_balance_missing_product(service):
 
     with pytest.raises(StockProductNotFoundError):
         service.get_stock_balance(999)
+
+
+def test_integrity_error_product_disappears(service, db, product):
+    service.movements.get_product = MagicMock(
+        side_effect=[product, None]
+    )
+    service.movements.increase_stock.return_value = True
+
+    error = IntegrityError(
+        "INSERT",
+        {},
+        Exception(1452, "Cannot add or update a child row"),
+    )
+    service.movements.create.side_effect = error
+
+    with pytest.raises(StockProductNotFoundError):
+        service.create_movement(
+            movement_data("receipt"),
+            user_id=7,
+        )
+
+    assert service.movements.get_product.call_count == 2
+    db.rollback.assert_called_once()
+    db.commit.assert_not_called()
+
+
+def test_integrity_error_supplier_disappears(service, db, product):
+    service.movements.get_product = MagicMock(return_value=product)
+    service.suppliers.get_by_id = MagicMock(
+        side_effect=[object(), None]
+    )
+    service.movements.increase_stock.return_value = True
+
+    error = IntegrityError(
+        "INSERT",
+        {},
+        Exception(1452, "Cannot add or update a child row"),
+    )
+    service.movements.create.side_effect = error
+
+    with pytest.raises(StockSupplierNotFoundError):
+        service.create_movement(
+            movement_data("receipt", supplier_id=3),
+            user_id=7,
+        )
+
+    assert service.suppliers.get_by_id.call_count == 2
+    db.rollback.assert_called_once()
+    db.commit.assert_not_called()
+
+
+def test_integrity_error_references_still_exist(service, db, product):
+    service.movements.get_product = MagicMock(return_value=product)
+    service.suppliers.get_by_id = MagicMock(return_value=object())
+    service.movements.increase_stock.return_value = True
+
+    error = IntegrityError(
+        "INSERT",
+        {},
+        Exception(1452, "Cannot add or update a child row"),
+    )
+    service.movements.create.side_effect = error
+
+    with pytest.raises(IntegrityError) as exc_info:
+        service.create_movement(
+            movement_data("receipt", supplier_id=3),
+            user_id=7,
+        )
+
+    assert exc_info.value is error
+    assert service.movements.get_product.call_count == 2
+    assert service.suppliers.get_by_id.call_count == 2
+    db.rollback.assert_called_once()
+    db.commit.assert_not_called()
+    
+
+def test_unknown_movement_type_rolls_back(service, db, product):
+    service.movements.get_product = MagicMock(return_value=product)
+    data = StockMovementCreate.model_construct(
+        product_id=1,
+        movement_type="unknown",
+        quantity=Decimal("5.000"),
+        supplier_id=None,
+        note=None,
+    )
+    with pytest.raises(ValueError, match="Невідомий тип складської операції"):
+        service.create_movement(data, user_id=7)
+    db.rollback.assert_called_once()
+    db.commit.assert_not_called()
+    service.movements.create.assert_not_called()
