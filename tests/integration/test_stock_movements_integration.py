@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from decimal import Decimal
 from threading import Barrier
 from uuid import uuid4
@@ -385,9 +386,9 @@ def test_stock_overflow_preserves_balance_and_journal(
 
 def test_writeoff_requires_reason_and_preserves_stock(
     client,
-     worker_headers,
+    worker_headers,
     product,
-        db_session,
+    db_session,
 ):
     product_id = product.id
 
@@ -994,3 +995,190 @@ def test_journal_date_filters_sort_and_pagination(
     ]
 
     assert actual_ids == expected_ids
+
+
+# ============================================================
+# Stage 8.4 - Stock Movement Filtering Integration Tests
+# ============================================================
+
+
+@pytest.mark.parametrize(
+    "movement_type,expected_indices",
+    [
+        ("receipt", [3, 0]),
+        ("issue", [1]),
+        ("writeoff", [2]),
+    ],
+)
+def test_journal_filter_by_movement_type(
+    client,
+    worker_headers,
+    journal_movements,
+    movement_type,
+    expected_indices,
+):
+    response = client.get(
+        "/stock-movements",
+        params={
+            "product_id": journal_movements["product_id"],
+            "movement_type": movement_type,
+        },
+        headers=worker_headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    actual_ids = [
+        movement["id"]
+        for movement in response.json()
+    ]
+
+    expected_ids = [
+        journal_movements["ids"][index]
+        for index in expected_indices
+    ]
+
+    assert actual_ids == expected_ids
+
+
+@pytest.mark.parametrize(
+    "params,expected_indices",
+    [
+        (
+            {
+                "movement_type": "receipt",
+                "date_from": "2026-10-05T00:00:00",
+            },
+            [3],
+        ),
+        (
+            {
+                "movement_type": "issue",
+                "date_to": "2026-10-05T12:00:00",
+            },
+            [1],
+        ),
+        (
+            {
+                "movement_type": "writeoff",
+                "date_from": "2026-10-05T12:00:00",
+                "date_to": "2026-10-05T12:00:00",
+            },
+            [2],
+        ),
+        (
+            {
+                "movement_type": "receipt",
+                "date_from": "2026-10-02T00:00:00",
+                "date_to": "2026-10-09T23:59:59",
+            },
+            [],
+        ),
+        (
+            {
+                "movement_type": "issue",
+                "date_from": "2026-10-06T00:00:00",
+            },
+            [],
+        ),
+        (
+            {
+                "date_from": "2026-11-01T00:00:00",
+                "date_to": "2026-11-30T23:59:59",
+            },
+            [],
+        ),
+    ],
+)
+def test_journal_combined_filters(
+    client,
+    worker_headers,
+    journal_movements,
+    params,
+    expected_indices,
+):
+    response = client.get(
+        "/stock-movements",
+        params={
+            "product_id": journal_movements["product_id"],
+            **params,
+        },
+        headers=worker_headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    actual_ids = [
+        movement["id"]
+        for movement in response.json()
+    ]
+
+    expected_ids = [
+        journal_movements["ids"][index]
+        for index in expected_indices
+    ]
+
+    assert actual_ids == expected_ids
+
+
+def test_journal_combined_filters_isolate_products(
+    client,
+    worker_headers,
+    journal_movements,
+    product,
+    db_session,
+):
+    second_product = Product(
+        sku=f"INV-FILTER-{uuid4().hex[:12]}",
+        name="Second Filtering Product",
+        unit="pcs",
+        category_id=product.category_id,
+        location_id=product.location_id,
+        quantity=Decimal("0.000"),
+    )
+
+    db_session.add(second_product)
+    db_session.flush()
+
+    second_response = create_movement(
+        client,
+        worker_headers,
+        second_product.id,
+        "receipt",
+        "25.000",
+    )
+
+    assert second_response.status_code == 201, second_response.text
+
+    second_movement = db_session.get(
+        StockMovement,
+        second_response.json()["id"],
+    )
+
+    assert second_movement is not None
+
+    second_movement.created_at = datetime(
+        2026, 10, 10, 15, 0
+    )
+    db_session.flush()
+
+    response = client.get(
+        "/stock-movements",
+        params={
+            "product_id": journal_movements["product_id"],
+            "movement_type": "receipt",
+            "date_from": "2026-10-05T00:00:00",
+            "date_to": "2026-10-14T23:59:59",
+        },
+        headers=worker_headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    actual_ids = [
+        movement["id"]
+        for movement in response.json()
+    ]
+
+    assert actual_ids == [journal_movements["ids"][3]]
+    assert second_movement.id not in actual_ids
