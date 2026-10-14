@@ -19,6 +19,8 @@ from backend.app.schemas.stock_movements import (
     StockMovementCreate
 )
 
+from datetime import datetime
+
 
 MAX_STOCK_QUANTITY = Decimal("99999999999.999")
 
@@ -47,7 +49,7 @@ class InventoryService:
     """Business logic for warehouse stock operations."""
 
     def __init__(self, db: Session) -> None:
-        self.db= db
+        self.db = db
         self.movements = StockMovementRepository(db)
         self.suppliers = SupplierRepository(db)
 
@@ -171,6 +173,7 @@ class InventoryService:
 
         return movement
 
+
     def list_movements(
         self,
         *,
@@ -179,16 +182,30 @@ class InventoryService:
         product_id: int | None = None,
         user_id: int | None = None,
         supplier_id: int | None = None,
-        movement_type: str | None = None
+        movement_type: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_by: str = "newest"
     ) -> list[StockMovement]:
-        return self.movements.get_all(
-            offset=offset,
-            limit=limit,
-            product_id=product_id,
-            user_id=user_id,
-            supplier_id=supplier_id,
-            movement_type=movement_type
-        )
+        filters = {
+            "offset": offset,
+            "limit": limit,
+            "product_id": product_id,
+            "user_id": user_id,
+            "supplier_id": supplier_id,
+            "movement_type": movement_type
+        }
+
+        if date_from is not None:
+            filters["date_from"] = date_from
+
+        if date_to is not None:
+            filters["date_to"] = date_to
+
+        if sort_by != "newest":
+            filters["sort_by"] = sort_by
+
+        return self.movements.get_all(**filters)
 
     def get_stock_balance(
         self,

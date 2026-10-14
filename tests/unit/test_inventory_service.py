@@ -1,3 +1,4 @@
+from datetime import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -433,3 +434,37 @@ def test_unknown_movement_type_rolls_back(service, db, product):
     db.rollback.assert_called_once()
     db.commit.assert_not_called()
     service.movements.create.assert_not_called()
+
+
+def test_list_movements_forwards_date_range_and_sort(service):
+
+    service.movements.get_all = MagicMock(return_value=[])
+
+    date_from = datetime(2026, 10, 1, 8, 30)
+    date_to = datetime(2026, 10, 14, 18, 45)
+
+    result = service.list_movements(
+        offset=5,
+        limit=10,
+        product_id=1,
+        user_id=2,
+        supplier_id=3,
+        movement_type="receipt",
+        date_from=date_from,
+        date_to=date_to,
+        sort_by="oldest",
+    )
+
+    assert result == []
+
+    service.movements.get_all.assert_called_once_with(
+        offset=5,
+        limit=10,
+        product_id=1,
+        user_id=2,
+        supplier_id=3,
+        movement_type="receipt",
+        date_from=date_from,
+        date_to=date_to,
+        sort_by="oldest",
+    )

@@ -10,6 +10,8 @@ from backend.app.repositories.stock_movement_repository import (
     StockMovementRepository
 )
 
+from datetime import datetime
+
 
 @pytest.fixture
 def db():
@@ -259,3 +261,128 @@ def test_decrease_stock_has_balance_condition(repository, db):
     sql = str(statement.compile())
 
     assert "products.quantity >=" in sql
+
+
+def test_get_all_with_date_from(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    date_from = datetime(2026, 10, 1, 10, 30)
+
+    repository.get_all(date_from=date_from)
+
+    statement = db.scalars.call_args.args[0]
+    compiled = statement.compile()
+
+    assert date_from in compiled.params.values()
+    assert "stock_movements.created_at >=" in str(compiled)
+
+
+def test_get_all_with_date_to(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    date_to = datetime(2026, 10, 14, 18, 45)
+
+    repository.get_all(date_to=date_to)
+
+    statement = db.scalars.call_args.args[0]
+    compiled = statement.compile()
+
+    assert date_to in compiled.params.values()
+    assert "stock_movements.created_at <=" in str(compiled)
+
+
+def test_get_all_with_date_range(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    date_from = datetime(2026, 10, 1)
+    date_to = datetime(2026, 10, 14, 23, 59, 59)
+
+    repository.get_all(
+        date_from=date_from,
+        date_to=date_to
+    )
+
+    statement = db.scalars.call_args.args[0]
+    compiled = statement.compile()
+
+    assert date_from in compiled.params.values()
+    assert date_to in compiled.params.values()
+
+    sql = str(compiled)
+
+    assert "stock_movements.created_at >=" in sql
+    assert "stock_movements.created_at <=" in sql
+
+
+def test_get_all_with_equal_date_boundaries(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    boundary = datetime(2026, 10, 14, 12, 0)
+
+    repository.get_all(
+        date_from=boundary,
+        date_to=boundary
+    )
+
+    statement = db.scalars.call_args.args[0]
+    sql = str(statement.compile())
+
+    assert "stock_movements.created_at >=" in sql
+    assert "stock_movements.created_at <=" in sql
+
+
+def test_get_all_orders_oldest_first(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    repository.get_all(sort_by="oldest")
+
+    statement = db.scalars.call_args.args[0]
+
+    order_by = [
+        str(item)
+        for item in statement._order_by_clauses
+    ]
+
+    assert order_by == [
+        "stock_movements.created_at ASC",
+        "stock_movements.id ASC"
+    ]
+
+
+def test_get_all_explicit_newest_sort(repository, db):
+    db.scalars.return_value.all.return_value = []
+
+    repository.get_all(sort_by="newest")
+
+    statement = db.scalars.call_args.args[0]
+
+    order_by = [
+        str(item)
+        for item in statement._order_by_clauses
+    ]
+
+    assert order_by == [
+        "stock_movements.created_at DESC",
+        "stock_movements.id DESC"
+    ]
+
+
+@pytest.mark.parametrize(
+    "sort_by",
+    ["invalid", "ascending", "", "NEWEST"]
+)
+def test_get_all_rejects_invalid_sort(repository, db, sort_by):
+    with pytest.raises(ValueError):
+        repository.get_all(sort_by=sort_by)
+
+    db.scalars.assert_not_called()
+
+
+def test_get_all_rejects_reversed_date_range(repository, db):
+    with pytest.raises(ValueError):
+        repository.get_all(
+            date_from=datetime(2026, 10, 15),
+            date_to=datetime(2026, 10, 14)
+        )
+
+    db.scalars.assert_not_called()

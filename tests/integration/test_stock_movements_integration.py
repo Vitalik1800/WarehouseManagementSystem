@@ -90,12 +90,12 @@ def product(db_session):
 
 
 def create_movement(
-    client,
-    headers,
-    product_id,
-    movement_type,
-    quantity,
-    note=None,
+        client,
+        headers,
+        product_id,
+        movement_type,
+        quantity,
+        note=None,
 ):
     paths = {
         "receipt": "/stock-movements/receipts",
@@ -151,10 +151,10 @@ def get_stored_movements(db_session, product_id):
 
 
 def test_receipt_issue_writeoff_balance_and_journal(
-    client,
-    worker_headers,
-    product,
-    db_session,
+        client,
+        worker_headers,
+        product,
+        db_session,
 ):
     product_id = product.id
 
@@ -173,8 +173,8 @@ def test_receipt_issue_writeoff_balance_and_journal(
     movement_ids = []
 
     for operation, expected in zip(
-        operations,
-        expected_balances,
+            operations,
+            expected_balances,
     ):
         movement_type, quantity, note = operation
 
@@ -225,13 +225,13 @@ def test_receipt_issue_writeoff_balance_and_journal(
     )
 
     assert [
-        movement.movement_type
-        for movement in movements
-    ] == [
-        "receipt",
-        "issue",
-        "writeoff",
-    ]
+               movement.movement_type
+               for movement in movements
+           ] == [
+               "receipt",
+               "issue",
+               "writeoff",
+           ]
 
     receipts = sum(
         (
@@ -285,10 +285,10 @@ def test_receipt_issue_writeoff_balance_and_journal(
 
 
 def test_insufficient_stock_preserves_balance_and_journal(
-    client,
-    worker_headers,
-    product,
-    db_session,
+        client,
+        worker_headers,
+        product,
+        db_session,
 ):
     product_id = product.id
 
@@ -336,10 +336,10 @@ def test_insufficient_stock_preserves_balance_and_journal(
 
 
 def test_stock_overflow_preserves_balance_and_journal(
-    client,
-    worker_headers,
-    product,
-    db_session,
+        client,
+        worker_headers,
+        product,
+        db_session,
 ):
     product_id = product.id
 
@@ -385,9 +385,9 @@ def test_stock_overflow_preserves_balance_and_journal(
 
 def test_writeoff_requires_reason_and_preserves_stock(
     client,
-    worker_headers,
+     worker_headers,
     product,
-    db_session,
+        db_session,
 ):
     product_id = product.id
 
@@ -476,7 +476,6 @@ def test_journal_filter_returns_only_requested_product(
     assert len(journal) == 1
     assert journal[0]["product_id"] == product.id
     assert journal[0]["id"] == first.json()["id"]
-
 
 
 def test_failed_journal_insert_rolls_back_stock(
@@ -869,3 +868,129 @@ def test_concurrent_receipts_do_not_overflow(test_engine):
                 )
             )
             session.commit()
+
+
+# ============================================================
+# Stage 8.3 - Stock Movement Journal Integration Tests
+# ============================================================
+
+
+@pytest.fixture
+def journal_movements(client, worker_headers, product, db_session):
+    from datetime import datetime
+
+    operations = [
+        ("receipt", "100.000", datetime(2026, 10, 1, 9, 0)),
+        ("issue", "10.000", datetime(2026, 10, 5, 12, 0)),
+        ("writeoff", "5.000", datetime(2026, 10, 5, 12, 0)),
+        ("receipt", "20.000", datetime(2026, 10, 10, 15, 0)),
+    ]
+
+    movements = []
+
+    for movement_type, quantity, created_at in operations:
+        response = create_movement(
+            client,
+            worker_headers,
+            product.id,
+            movement_type,
+            quantity,
+            note=(
+                "Damaged goods"
+                if movement_type == "writeoff"
+                else None
+            ),
+        )
+
+        assert response.status_code == 201, response.text
+
+        movement_id = response.json()["id"]
+        movement = db_session.get(StockMovement, movement_id)
+
+        assert movement is not None
+
+        movement.created_at = created_at
+        movements.append(movement)
+
+    db_session.flush()
+
+    return {
+        "product_id": product.id,
+        "ids": [movement.id for movement in movements],
+    }
+
+
+@pytest.mark.parametrize(
+    "params,expected_indices",
+    [
+        (
+                {"date_from": "2026-10-05T12:00:00"},
+                [3, 2, 1],
+        ),
+        (
+                {"date_to": "2026-10-05T12:00:00"},
+                [2, 1, 0],
+        ),
+        (
+                {
+                    "date_from": "2026-10-05T12:00:00",
+                    "date_to": "2026-10-05T12:00:00",
+                },
+                [2, 1],
+        ),
+        (
+                {"sort_by": "oldest"},
+                [0, 1, 2, 3],
+        ),
+        (
+                {"sort_by": "newest"},
+                [3, 2, 1, 0],
+        ),
+        (
+                {
+                    "date_from": "2026-10-05T12:00:00",
+                    "date_to": "2026-10-10T15:00:00",
+                    "movement_type": "receipt",
+                    "sort_by": "oldest",
+                },
+                [3],
+        ),
+        (
+                {
+                    "sort_by": "oldest",
+                    "offset": 1,
+                    "limit": 2,
+                },
+                [1, 2],
+        ),
+    ],
+)
+def test_journal_date_filters_sort_and_pagination(
+        client,
+        worker_headers,
+        journal_movements,
+        params,
+        expected_indices,
+):
+    response = client.get(
+        "/stock-movements",
+        params={
+            "product_id": journal_movements["product_id"],
+            **params,
+        },
+        headers=worker_headers,
+    )
+
+    assert response.status_code == 200, response.text
+
+    actual_ids = [
+        movement["id"]
+        for movement in response.json()
+    ]
+
+    expected_ids = [
+        journal_movements["ids"][index]
+        for index in expected_indices
+    ]
+
+    assert actual_ids == expected_ids

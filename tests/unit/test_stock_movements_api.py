@@ -541,3 +541,127 @@ def test_stock_balance_decimal_precision(
     assert Decimal(
         response.json()["quantity"]
     ) == Decimal(quantity)
+
+
+# ============================================================
+# Stage 8.3 - Stock Movement Journal API tests
+# ============================================================
+
+def test_list_movements_date_range_and_sort(client, authorize):
+    authorize(role="worker")
+
+    date_from = datetime(2026, 10, 1, 8, 30)
+    date_to = datetime(2026, 10, 14, 18, 45)
+
+    with patch.object(
+        InventoryService,
+        "list_movements",
+        return_value=[],
+    ) as mocked:
+        response = client.get(
+            "/stock-movements",
+            params={
+                "offset": 5,
+                "limit": 10,
+                "product_id": 1,
+                "user_id": 7,
+                "supplier_id": 3,
+                "movement_type": "receipt",
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "sort_by": "oldest",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+    mocked.assert_called_once_with(
+        offset=5,
+        limit=10,
+        product_id=1,
+        user_id=7,
+        supplier_id=3,
+        movement_type="receipt",
+        date_from=date_from,
+        date_to=date_to,
+        sort_by="oldest",
+    )
+
+
+@pytest.mark.parametrize(
+    "params,expected_key,expected_value",
+    [
+        (
+            {"date_from": "2026-10-01T08:30:00"},
+            "date_from",
+            datetime(2026, 10, 1, 8, 30),
+        ),
+        (
+            {"date_to": "2026-10-14T18:45:00"},
+            "date_to",
+            datetime(2026, 10, 14, 18, 45),
+        ),
+        (
+            {"sort_by": "oldest"},
+            "sort_by",
+            "oldest",
+        ),
+    ],
+)
+def test_list_movements_optional_journal_filters(
+    client,
+    authorize,
+    params,
+    expected_key,
+    expected_value,
+):
+    authorize(role="worker")
+
+    with patch.object(
+        InventoryService,
+        "list_movements",
+        return_value=[],
+    ) as mocked:
+        response = client.get(
+            "/stock-movements",
+            params=params,
+        )
+
+    assert response.status_code == 200
+    assert mocked.call_args.kwargs[expected_key] == expected_value
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"date_from": "invalid-date"},
+        {"date_to": "not-a-date"},
+        {
+            "date_from": "2026-10-15T00:00:00",
+            "date_to": "2026-10-14T00:00:00",
+        },
+        {"sort_by": "invalid"},
+        {"sort_by": "NEWEST"},
+        {"date_from": "2026-10-01T08:30:00Z"},
+        {"date_to": "2026-10-14T18:45:00+03:00"},
+    ],
+)
+def test_list_movements_invalid_journal_filters(
+    client,
+    authorize,
+    params,
+):
+    authorize(role="worker")
+
+    with patch.object(
+        InventoryService,
+        "list_movements",
+    ) as mocked:
+        response = client.get(
+            "/stock-movements",
+            params=params,
+        )
+
+    assert response.status_code == 422
+    mocked.assert_not_called()

@@ -27,6 +27,8 @@ from backend.app.services.inventory_service import (
     StockSupplierNotFoundError
 )
 
+from datetime import datetime
+from typing import Literal
 
 router = APIRouter(
     prefix="/stock-movements",
@@ -183,18 +185,54 @@ def list_stock_movements(
     movement_type: Annotated[
         str | None,
         Query(pattern="^(receipt|issue|writeoff)$")
-    ] = None
+    ] = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    sort_by: Literal["newest", "oldest"] = "newest",
 ) -> list[StockMovementResponse]:
-    service = InventoryService(db)
 
-    movements = service.list_movements(
-        offset=offset,
-        limit=limit,
-        product_id=product_id,
-        user_id=user_id,
-        supplier_id=supplier_id,
-        movement_type=movement_type
-    )
+    if date_from is not None and date_from.tzinfo is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="date_from must not contain timezone information",
+        )
+
+    if date_to is not None and date_to.tzinfo is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="date_to must not contain timezone information",
+        )
+
+    if (
+        date_from is not None
+        and date_to is not None
+        and date_from > date_to
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="date_from must be earlier than or equal to date_to",
+        )
+
+    filters = {
+        "offset": offset,
+        "limit": limit,
+        "product_id": product_id,
+        "user_id": user_id,
+        "supplier_id": supplier_id,
+        "movement_type": movement_type,
+    }
+
+    if date_from is not None:
+        filters["date_from"] = date_from
+
+    if date_to is not None:
+        filters["date_to"] = date_to
+
+    if sort_by != "newest":
+        filters["sort_by"] = sort_by
+
+    service = InventoryService(db)
+    movements = service.list_movements(**filters)
 
     return [
         StockMovementResponse.model_validate(movement)
