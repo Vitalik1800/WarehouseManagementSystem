@@ -42,3 +42,8 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# MySQL database backups
+*.sql
+*.sql.gz
+*.dump
