@@ -157,3 +157,80 @@ def test_logout_rollback_on_commit_error():
 
     db.commit.assert_called_once_with()
     db.rollback.assert_called_once_with()
+
+
+def test_logout_with_actor_records_audit_and_commits():
+    """Checks token revocation and logout audit in one transaction."""
+
+    db = Mock()
+    service = AuthService(db)
+
+    service.revoked_tokens = Mock()
+    service.revoked_tokens.is_revoked.return_value = False
+    service.activities = Mock()
+
+    token_payload = {
+        "sub": "42",
+        "jti": "550e8400-e29b-41d4-a716-446655440009",
+        "exp": 1791633600,
+        "type": "access",
+    }
+
+    result = service.logout(token_payload, actor_id=42)
+
+    assert result is None
+
+    service.revoked_tokens.create.assert_called_once_with(
+        jti=token_payload["jti"],
+        expires_at=datetime.fromtimestamp(
+            token_payload["exp"],
+            tz=timezone.utc,
+        ),
+    )
+
+    service.activities.record.assert_called_once_with(
+        action="auth.logout",
+        actor_id=42,
+        entity_type="user",
+        entity_id=42,
+    )
+
+    db.commit.assert_called_once_with()
+    db.rollback.assert_not_called()
+
+
+def test_logout_audit_error_rolls_back():
+    """Checks rollback when logout audit recording fails."""
+
+    db = Mock()
+    service = AuthService(db)
+
+    service.revoked_tokens = Mock()
+    service.revoked_tokens.is_revoked.return_value = False
+    service.activities = Mock()
+
+    error = RuntimeError("Logout audit failed")
+    service.activities.record.side_effect = error
+
+    token_payload = {
+        "sub": "42",
+        "jti": "550e8400-e29b-41d4-a716-446655440010",
+        "exp": 1791633600,
+        "type": "access",
+    }
+
+    with pytest.raises(RuntimeError) as exc_info:
+        service.logout(token_payload, actor_id=42)
+
+    assert exc_info.value is error
+
+    service.revoked_tokens.create.assert_called_once()
+    service.activities.record.assert_called_once_with(
+        action="auth.logout",
+        actor_id=42,
+        entity_type="user",
+        entity_id=42,
+    )
+
+    db.commit.assert_not_called()
+    db.rollback.assert_called_once_with()
