@@ -95,6 +95,10 @@ def login_user(
         user_id=user.id
     )
 
+    service.record_successful_login(
+        user_id=user.id
+    )
+
     return TokenResponse(
         access_token=access_token
     )
@@ -135,4 +139,7 @@ def logout_user(
 ) -> None:
     """Відкликає поточний JWT користувача."""
     service = AuthService(db)
-    service.logout(payload)
+    service.logout(
+        token_payload=payload,
+        actor_id=current_user.id
+    )

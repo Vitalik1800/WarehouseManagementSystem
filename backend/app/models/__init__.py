@@ -5,6 +5,7 @@ from backend.app.models.stock_movement import StockMovement
 from backend.app.models.storage_location import StorageLocation
 from backend.app.models.supplier import Supplier
 from backend.app.models.user import User
+from backend.app.models.user_activity_log import UserActivityLog
 
 __all__ = [
     "User",
@@ -13,5 +14,6 @@ __all__ = [
     "Product",
     "StorageLocation",
     "StockMovement",
-    "RevokedToken"
+    "RevokedToken",
+    "UserActivityLog"
 ]

@@ -7,15 +7,16 @@ from backend.app.core.security import (
     hash_password,
     verify_password
 )
-
 from backend.app.models.user import User
 from backend.app.repositories.user_repository import UserRepository
-
 from backend.app.repositories.revoked_token_repository import (
     RevokedTokenRepository
 )
-
 from backend.app.schemas.auth import UserRegister
+from backend.app.services.user_activity_log_service import (
+    UserActivityLogService
+)
+
 
 _DUMMY_PASSWORD_HASH = hash_password(
     "warehouse_auth_dummy_password"
@@ -23,23 +24,24 @@ _DUMMY_PASSWORD_HASH = hash_password(
 
 
 class UsernameAlreadyExistsError(Exception):
-    """Користувач із таким логіном уже існує."""
+    """A user with this username already exists."""
 
 
 class InvalidCredentialsError(Exception):
-    """Неправильний логін, пароль або неактивний обліковий запис."""
+    """Invalid username, password, or inactive account."""
 
 
 class AuthService:
-    """Сервіс реєстрації та автентифікації користувачів."""
+    """Service for registration, authentication, and token revocation."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
         self.users = UserRepository(db)
         self.revoked_tokens = RevokedTokenRepository(db)
+        self.activities = UserActivityLogService(db)
 
     def register(self, data: UserRegister) -> User:
-        """Реєструє нового користувача з роллю worker."""
+        """Register a worker and record the event atomically."""
         existing_user = self.users.get_by_username(data.username)
 
         if existing_user is not None:
@@ -55,6 +57,13 @@ class AuthService:
                 username=data.username,
                 password_hash=password_hash,
                 role="worker"
+            )
+
+            self.activities.record(
+                action="auth.register",
+                actor_id=user.id,
+                entity_type="user",
+                entity_id=user.id
             )
 
             self.db.commit()
@@ -75,7 +84,7 @@ class AuthService:
             raise
 
     def authenticate(self, username: str, password: str) -> User:
-        """Перевіряє облікові дані користувача."""
+        """Validate credentials without recording or committing."""
         user = self.users.get_by_username(username)
 
         password_hash = (
@@ -90,9 +99,9 @@ class AuthService:
         )
 
         if (
-                user is None
-                or not password_valid
-                or not user.is_active
+            user is None
+            or not password_valid
+            or not user.is_active
         ):
             raise InvalidCredentialsError(
                 "Неправильний логін або пароль"
@@ -100,8 +109,28 @@ class AuthService:
 
         return user
 
-    def logout(self, token_payload: dict) -> None:
-        """Відкликає JWT, зберігаючи його JTI у базі даних."""
+    def record_successful_login(self, user_id: int) -> None:
+        """Persist an audit event after successful JWT generation."""
+        try:
+            self.activities.record(
+                action="auth.login",
+                actor_id=user_id,
+                entity_type="user",
+                entity_id=user_id
+            )
+
+            self.db.commit()
+
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def logout(
+        self,
+        token_payload: dict,
+        actor_id: int | None = None
+    ) -> None:
+        """Revoke a JWT and record logout in the same transaction."""
         jti = token_payload["jti"]
 
         expires_at = datetime.fromtimestamp(
@@ -117,6 +146,14 @@ class AuthService:
                 jti=jti,
                 expires_at=expires_at
             )
+
+            if actor_id is not None:
+                self.activities.record(
+                    action="auth.logout",
+                    actor_id=actor_id,
+                    entity_type="user",
+                    entity_id=actor_id
+                )
 
             self.db.commit()
 

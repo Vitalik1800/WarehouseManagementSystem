@@ -1,3 +1,4 @@
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -5,11 +6,10 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.permissions import require_roles
 from backend.app.db.session import get_db
+from backend.app.models.user import User
 from backend.app.repositories.user_repository import UserRepository
 from backend.app.schemas.auth import UserResponse
-
 from backend.app.schemas.users import UserUpdate, UserRoleUpdate
-
 from backend.app.services.user_service import (
     UserService,
     UserNotFoundError,
@@ -17,8 +17,6 @@ from backend.app.services.user_service import (
     LastActiveAdminError,
     SelfAdministrativeActionError
 )
-
-from backend.app.models.user import User
 
 
 router = APIRouter(
@@ -33,15 +31,25 @@ router = APIRouter(
     response_model=list[UserResponse],
     status_code=status.HTTP_200_OK,
     summary="List users (admin only)",
-    responses={401: {"description": "Unauthorized"}, 403: {"description": "Forbidden"}}
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"}
+    }
 )
 def list_users(
     db: Annotated[Session, Depends(get_db)],
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50
 ) -> list[UserResponse]:
-    users = UserRepository(db).get_all(offset=offset, limit=limit)
-    return [UserResponse.model_validate(user) for user in users]
+    users = UserRepository(db).get_all(
+        offset=offset,
+        limit=limit,
+    )
+
+    return [
+        UserResponse.model_validate(user)
+        for user in users
+    ]
 
 
 @router.get(
@@ -89,20 +97,27 @@ def get_user(
 def update_user(
     user_id: Annotated[int, Path(ge=1)],
     data: UserUpdate,
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    current_admin: Annotated[
+        User,
+        Depends(require_roles("admin"))
+    ]
 ) -> UserResponse:
     service = UserService(db)
 
     try:
         user = service.update_user(
             user_id=user_id,
-            data=data
+            data=data,
+            actor_id=current_admin.id
         )
+
     except UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc)
         ) from exc
+
     except UsernameAlreadyExistsError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -122,7 +137,7 @@ def update_user(
         401: {"description": "Unauthorized"},
         403: {"description": "Forbidden"},
         404: {"description": "User not found"},
-        409: {"description": "Cannot demote last active admin"},
+        409: {"description": "Cannot change admin role"},
         422: {"description": "Validation error"}
     }
 )
@@ -175,23 +190,36 @@ def change_user_role(
         401: {"description": "Unauthorized"},
         403: {"description": "Forbidden"},
         404: {"description": "User not found"},
+        409: {"description": "Administrative action conflict"},
         422: {"description": "Validation error"}
     }
 )
 def activate_user(
     user_id: Annotated[int, Path(ge=1)],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    current_admin: Annotated[
+        User,
+        Depends(require_roles("admin"))
+    ]
 ) -> UserResponse:
     service = UserService(db)
 
     try:
         user = service.set_user_active(
             user_id=user_id,
-            is_active=True
+            is_active=True,
+            actor_id=current_admin.id
         )
+
     except UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc)
+        ) from exc
+
+    except SelfAdministrativeActionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
             detail=str(exc)
         ) from exc
 
@@ -208,7 +236,7 @@ def activate_user(
         401: {"description": "Unauthorized"},
         403: {"description": "Forbidden"},
         404: {"description": "User not found"},
-        409: {"description": "Cannot deactivate last active admin"},
+        409: {"description": "Cannot deactivate admin"},
         422: {"description": "Validation error"}
     }
 )
@@ -228,16 +256,19 @@ def deactivate_user(
             is_active=False,
             actor_id=current_admin.id
         )
+
     except UserNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc)
         ) from exc
+
     except LastActiveAdminError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc)
         ) from exc
+
     except SelfAdministrativeActionError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
