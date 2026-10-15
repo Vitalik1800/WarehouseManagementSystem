@@ -413,3 +413,60 @@ def test_response_contains_expected_fields(client, db_session):
         "details",
         "created_at",
     }
+
+
+@pytest.mark.parametrize("sort_by", ["newest", "oldest"])
+def test_stable_sorting_and_pagination_with_same_timestamp(
+    client,
+    db_session,
+    sort_by
+):
+    admin = create_user(db_session, role="admin")
+
+    same_time = datetime(2026, 10, 10, 12, 0, 0)
+
+    activities = [
+        create_activity(
+            db_session,
+            actor_id=admin.id,
+            entity_id=admin.id,
+            created_at=same_time,
+        )
+        for _ in range(5)
+    ]
+
+    created_ids = [activity.id for activity in activities]
+
+    expected_ids = (
+        list(reversed(created_ids))
+        if sort_by == "newest"
+        else created_ids
+    )
+
+    returned_ids = []
+
+    for offset in (0, 2, 4):
+        response = client.get(
+            "/user-activity-logs",
+            params={
+                "actor_id": admin.id,
+                "sort_by": sort_by,
+                "offset": offset,
+                "limit": 2,
+            },
+            headers=auth_headers(admin),
+        )
+
+        assert response.status_code == 200, response.text
+
+        page_ids = [
+            item["id"]
+            for item in response.json()
+        ]
+
+        assert page_ids == expected_ids[offset:offset + 2]
+
+        returned_ids.extend(page_ids)
+
+    assert returned_ids == expected_ids
+    assert len(returned_ids) == len(set(returned_ids))

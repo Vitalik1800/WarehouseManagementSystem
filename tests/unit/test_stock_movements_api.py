@@ -342,9 +342,16 @@ def test_list_movements_filters(client, authorize):
     "params",
     [
         {"offset": -1},
+        {"offset": "abc"},
         {"limit": 0},
         {"limit": 101},
+        {"limit": "abc"},
         {"product_id": 0},
+        {"product_id": "abc"},
+        {"user_id": 0},
+        {"user_id": -1},
+        {"supplier_id": 0},
+        {"supplier_id": -1},
         {"movement_type": "transfer"},
     ],
 )
