@@ -6,6 +6,10 @@ from frontend.app.components.page_header import PageHeader
 from frontend.app.components.sidebar import Sidebar
 from frontend.app.core.config import get_frontend_settings
 
+from typing import Any
+
+from frontend.app.components.user_info_panel import UserInfoPanel
+
 
 class MainLayout(ctk.CTkFrame):
     """Основний каркас графічного інтерфейсу."""
@@ -27,6 +31,7 @@ class MainLayout(ctk.CTkFrame):
         self,
         master,
         on_logout: Callable[[], None] | None = None,
+        current_user: dict[str, Any] | None = None,
         **kwargs
     ):
         super().__init__(
@@ -38,6 +43,12 @@ class MainLayout(ctk.CTkFrame):
         self.settings = get_frontend_settings()
         self.current_page = "dashboard"
         self.on_logout = on_logout
+
+        self.current_user = (
+            current_user.copy()
+            if current_user is not None
+            else None
+        )
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -103,6 +114,17 @@ class MainLayout(ctk.CTkFrame):
                 side="right",
                 padx=(0, 12),
                 pady=14
+            )
+
+        if self.current_user is not None:
+            self.user_info_panel = UserInfoPanel(
+                self.header,
+                user=self.current_user
+            )
+            self.user_info_panel.pack(
+                side="right",
+                padx=(0, 12),
+                pady=8
             )
 
     def _change_appearance_mode(self, mode: str):

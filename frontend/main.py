@@ -113,7 +113,8 @@ class WarehouseApplication(ctk.CTk):
 
         self.main_layout = MainLayout(
             self,
-            on_logout=self._on_logout
+            on_logout=self._on_logout,
+            current_user=self.current_user
         )
         self.main_layout.grid(
             row=0,
@@ -189,9 +190,10 @@ class WarehouseApplication(ctk.CTk):
                 "Не вдалося підтвердити logout на сервері: %s",
                 exc
             )
-        except Exception:
+        except Exception as exc:
             self.logger.exception(
-                "Непередбачена помилка під час logout"
+                "Непередбачена помилка під час logout",
+                exc
             )
         finally:
             self._complete_logout()

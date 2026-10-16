@@ -1,4 +1,3 @@
-
 from concurrent.futures import Future
 from unittest.mock import Mock
 
@@ -236,3 +235,45 @@ def test_application_relogin_after_logout(app):
 
     assert app.main_layout is not None
     assert app.current_user == TEST_USER
+
+
+def test_authenticated_user_displayed_in_header(app):
+    """Після входу панель показує авторизованого користувача."""
+
+    authenticate(app)
+
+    assert app.main_layout is not None
+
+    panel = app.main_layout.user_info_panel
+
+    assert panel.username_label.cget("text") == "tester"
+    assert panel.role_label.cget("text") == "Адміністратор"
+
+
+def test_user_panel_updates_after_relogin(app):
+    """Після повторного входу показуються дані нового користувача."""
+
+    authenticate(app)
+
+    first_panel = app.main_layout.user_info_panel
+
+    app._complete_logout()
+
+    assert app.main_layout is None
+    assert app.current_user is None
+
+    app.auth_service.api_client.is_authenticated = True
+
+    app._on_login_success({
+        "id": 2,
+        "username": "warehouse_manager",
+        "role": "manager"
+    })
+
+    assert app.main_layout is not None
+
+    second_panel = app.main_layout.user_info_panel
+
+    assert second_panel is not first_panel
+    assert second_panel.username_label.cget("text") == "warehouse_manager"
+    assert second_panel.role_label.cget("text") == "Менеджер"
