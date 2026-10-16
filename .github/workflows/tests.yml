@@ -66,9 +66,14 @@ jobs:
             -x db_url="mysql+pymysql://warehouse_test_user:warehouse_test_password@127.0.0.1:3306/warehouse_test_db?charset=utf8mb4" \
             upgrade head
 
+      - name: Install virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth
+
       - name: Run tests with coverage
         run: |
-          python -m pytest --cov=backend.app --cov-report=term-missing --cov-fail-under=90 -q
+          xvfb-run -a python -m pytest --cov=backend.app --cov-report=term-missing --cov-fail-under=90 -q
 
       - name: Check dependency compatibility
         run: python -m pip check
