@@ -213,14 +213,18 @@ class LoginView(ctk.CTkFrame):
         username: str,
         password: str
     ) -> dict[str, Any]:
-        """Виконує HTTP-авторизацію у фоновому потоці."""
+        """Виконує авторизацію та отримує профіль користувача."""
 
         self.auth_service.login(
             username=username,
             password=password
         )
 
-        return self.auth_service.get_current_user()
+        try:
+            return self.auth_service.get_current_user()
+        except Exception:
+            self.auth_service.api_client.clear_access_token()
+            raise
 
     def _check_login_result(self) -> None:
         """Обробляє результат у головному потоці Tkinter."""

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import customtkinter as ctk
 
 from frontend.app.components.page_header import PageHeader
@@ -21,7 +23,12 @@ class MainLayout(ctk.CTkFrame):
         "settings": "Налаштування настільного застосунку",
     }
 
-    def __init__(self, master, **kwargs):
+    def __init__(
+        self,
+        master,
+        on_logout: Callable[[], None] | None = None,
+        **kwargs
+    ):
         super().__init__(
             master,
             fg_color="transparent",
@@ -30,6 +37,7 @@ class MainLayout(ctk.CTkFrame):
 
         self.settings = get_frontend_settings()
         self.current_page = "dashboard"
+        self.on_logout = on_logout
 
         self.grid_rowconfigure(1, weight=1)
         self.grid_columnconfigure(1, weight=1)
@@ -83,6 +91,19 @@ class MainLayout(ctk.CTkFrame):
         self.theme_selector.set(
             self.settings.frontend_appearance_mode
         )
+
+        if self.on_logout is not None:
+            self.logout_button = ctk.CTkButton(
+                self.header,
+                text="Вийти",
+                width=100,
+                command=self.on_logout
+            )
+            self.logout_button.pack(
+                side="right",
+                padx=(0, 12),
+                pady=14
+            )
 
     def _change_appearance_mode(self, mode: str):
         """Змінити тему оформлення."""
