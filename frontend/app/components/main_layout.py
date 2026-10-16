@@ -10,6 +10,9 @@ from typing import Any
 
 from frontend.app.components.user_info_panel import UserInfoPanel
 
+from frontend.app.api.client import APIClient
+from frontend.app.views.dashboard_view import DashboardView
+
 
 class MainLayout(ctk.CTkFrame):
     """Основний каркас графічного інтерфейсу."""
@@ -32,6 +35,7 @@ class MainLayout(ctk.CTkFrame):
         master,
         on_logout: Callable[[], None] | None = None,
         current_user: dict[str, Any] | None = None,
+        api_client: APIClient | None = None,
         **kwargs
     ):
         super().__init__(
@@ -43,6 +47,8 @@ class MainLayout(ctk.CTkFrame):
         self.settings = get_frontend_settings()
         self.current_page = "dashboard"
         self.on_logout = on_logout
+        self.api_client = api_client
+        self.active_view: DashboardView | None = None
 
         self.current_user = (
             current_user.copy()
@@ -176,6 +182,23 @@ class MainLayout(ctk.CTkFrame):
             pady=24
         )
 
+        self.content.grid_rowconfigure(1, weight=1)
+
+        self.page_container = ctk.CTkFrame(
+            self.content,
+            fg_color="transparent",
+        )
+        self.page_container.grid(
+            row=1,
+            column=0,
+            sticky="nsew",
+            padx=18,
+            pady=(0, 18),
+        )
+
+        self.page_container.grid_columnconfigure(0, weight=1)
+        self.page_container.grid_rowconfigure(0, weight=1)
+
     def _create_status_bar(self):
         self.status_bar = ctk.CTkFrame(
             self,
@@ -200,6 +223,10 @@ class MainLayout(ctk.CTkFrame):
             padx=16
         )
 
+        if self.active_view is not None:
+            self.active_view.destroy()
+            self.active_view = None
+
     def _show_page(self, page_id: str):
         """Відобразити вибраний розділ."""
 
@@ -215,6 +242,7 @@ class MainLayout(ctk.CTkFrame):
         self.page_header.set_title(
             pages[page_id]
         )
+
         self.page_header.set_description(
             self.PAGE_DESCRIPTIONS.get(page_id, "")
         )
@@ -224,3 +252,21 @@ class MainLayout(ctk.CTkFrame):
         self.status_label.configure(
             text=f"Поточний розділ: {pages[page_id]}"
         )
+
+        # Видаляємо попередню сторінку.
+        if self.active_view is not None:
+            self.active_view.destroy()
+            self.active_view = None
+
+        # Відображаємо Dashboard.
+        if page_id == "dashboard" and self.api_client is not None:
+            self.active_view = DashboardView(
+                self.page_container,
+                api_client=self.api_client,
+            )
+
+            self.active_view.grid(
+                row=0,
+                column=0,
+                sticky="nsew",
+            )

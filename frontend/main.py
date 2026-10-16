@@ -114,7 +114,8 @@ class WarehouseApplication(ctk.CTk):
         self.main_layout = MainLayout(
             self,
             on_logout=self._on_logout,
-            current_user=self.current_user
+            current_user=self.current_user,
+            api_client=self.api_client
         )
         self.main_layout.grid(
             row=0,
