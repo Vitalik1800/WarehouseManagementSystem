@@ -44,7 +44,8 @@ def test_user_panel_initial_role(user_panel):
         ("storekeeper", "Комірник"),
         ("user", "Користувач"),
         ("ADMIN", "Адміністратор"),
-        ("Manager", "Менеджер")
+        ("Manager", "Менеджер"),
+        ("worker", "Працівник")
     ]
 )
 def test_user_panel_known_roles(user_panel, role, expected):

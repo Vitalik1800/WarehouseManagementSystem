@@ -9,6 +9,7 @@ class UserInfoPanel(ctk.CTkFrame):
     ROLE_LABELS = {
         "admin": "Адміністратор",
         "manager": "Менеджер",
+        "worker": "Працівник",
         "storekeeper": "Комірник",
         "user": "Користувач"
     }
