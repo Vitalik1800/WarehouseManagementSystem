@@ -22,5 +22,5 @@ class StockBalanceResponse(BaseModel):
         max_digits=14,
         decimal_places=3
     )
-    category_id: int = Field(gt=0),
+    category_id: int = Field(gt=0)
     location_id: int = Field(gt=0)
