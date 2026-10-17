@@ -2,17 +2,17 @@ import pytest
 
 from pydantic import ValidationError
 
-from backend.app.schemas.auth import UserRegister
+from backend.app.schemas.users import UserCreate
 
 
 @pytest.mark.parametrize(
     ("field", "value", "expected_error"),
     [
-        ("name", "   ", "value_error"),
-        ("username", "   ", "string_pattern_mismatch"),
+        ("name", "   ", "string_too_short"),
+        ("username", "   ", "string_too_short")
     ],
 )
-def test_user_register_rejects_blank_values(
+def test_user_create_rejects_blank_values(
     field,
     value,
     expected_error,
@@ -28,7 +28,7 @@ def test_user_register_rejects_blank_values(
     data[field] = value
 
     with pytest.raises(ValidationError) as exc_info:
-        UserRegister(**data)
+        UserCreate(**data)
 
     errors = exc_info.value.errors()
 

@@ -4,7 +4,7 @@ from typing import Any
 
 import customtkinter as ctk
 
-from frontend.app.api.auth_service import AuthService
+from frontend.app.services.auth_service import AuthService
 from frontend.app.api.client import APIClient, APIClientError
 from frontend.app.components.main_layout import MainLayout
 from frontend.app.core.config import get_frontend_settings

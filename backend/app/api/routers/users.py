@@ -9,7 +9,11 @@ from backend.app.db.session import get_db
 from backend.app.models.user import User
 from backend.app.repositories.user_repository import UserRepository
 from backend.app.schemas.auth import UserResponse
-from backend.app.schemas.users import UserUpdate, UserRoleUpdate
+from backend.app.schemas.users import (
+    UserCreate,
+    UserUpdate,
+    UserRoleUpdate
+)
 from backend.app.services.user_service import (
     UserService,
     UserNotFoundError,
@@ -23,6 +27,46 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"]
 )
+
+
+@router.post(
+    "",
+    dependencies=[Depends(require_roles("admin"))],
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create user (admin only)",
+    responses={
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        409: {"description": "Username already exists"},
+        422: {"description": "Validation error"}
+    }
+)
+def create_user(
+    data: UserCreate,
+    db: Annotated[Session, Depends(get_db)],
+    current_admin: Annotated[
+        User,
+        Depends(require_roles("admin"))
+    ]
+) -> UserResponse:
+    """Створює користувача від імені адміністратора."""
+
+    service = UserService(db)
+
+    try:
+        user = service.create_user(
+            data=data,
+            actor_id=current_admin.id
+        )
+
+    except UsernameAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc)
+        ) from exc
+
+    return UserResponse.model_validate(user)
 
 
 @router.get(

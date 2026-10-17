@@ -47,3 +47,9 @@ desktop.ini
 *.sql
 *.sql.gz
 *.dump
+# Local development backups and stage artifacts
+backups/
+*.before_*
+*.bak_*
+*.bak
+stage_10_7_3/

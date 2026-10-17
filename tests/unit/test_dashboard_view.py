@@ -45,8 +45,11 @@ def dashboard(monkeypatch):
 
     yield root, view, api_client, pending
 
-    view.destroy()
-    root.destroy()
+    if view.winfo_exists():
+        view.destroy()
+
+    if root.winfo_exists():
+        root.destroy()
 
 
 def finish_request(view, future, *, result=None, error=None):

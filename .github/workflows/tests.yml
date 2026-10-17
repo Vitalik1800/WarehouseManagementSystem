@@ -46,6 +46,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-lock.txt
+          python -m pip install pip-audit==2.10.1
 
       - name: Initialize MySQL databases and user
         run: |
@@ -73,7 +74,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          xvfb-run -a python -m pytest --cov=backend.app --cov-report=term-missing --cov-fail-under=90 -q
+          xvfb-run -a python -m pytest tests/unit/test_login_view.py tests/unit/test_user_info_panel.py tests/unit/test_warehouse_application.py tests/integration tests/unit --cov=backend.app --cov-report=term-missing --cov-fail-under=90 -q
 
       - name: Check dependency compatibility
         run: python -m pip check

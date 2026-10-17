@@ -13,6 +13,8 @@ from backend.app.services.user_activity_log_service import (
     UserActivityLogService
 )
 
+from tests.helpers.users import create_test_user
+
 
 PASSWORD = "SecurePassword123!"
 
@@ -31,21 +33,17 @@ def client(db_session):
         app.dependency_overrides.pop(get_db, None)
 
 
-def register_user(client):
+def register_user(db_session):
     username = f"audit_auth_{uuid4().hex[:16]}"
 
-    response = client.post(
-        "/auth/register",
-        json={
-            "name": "Auth Audit User",
-            "username": username,
-            "password": PASSWORD,
-        },
+    user = create_test_user(
+        db_session,
+        name="Auth Audit User",
+        username=username,
+        password=PASSWORD
     )
 
-    assert response.status_code == 201, response.text
-
-    return response.json()["id"], username
+    return user.id, username
 
 
 def find_activities(db_session, user_id, action):
@@ -61,22 +59,8 @@ def find_activities(db_session, user_id, action):
     return list(db_session.scalars(statement).all())
 
 
-def test_register_creates_audit(client, db_session):
-    user_id, _ = register_user(client)
-
-    activities = find_activities(
-        db_session,
-        user_id,
-        "auth.register",
-    )
-
-    assert len(activities) == 1
-    assert activities[0].details is None
-    assert activities[0].created_at is not None
-
-
 def test_login_creates_audit(client, db_session):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     response = client.post(
         "/auth/login",
@@ -100,7 +84,7 @@ def test_login_creates_audit(client, db_session):
 
 
 def test_failed_login_does_not_create_audit(client, db_session):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     response = client.post(
         "/auth/login",
@@ -122,7 +106,7 @@ def test_failed_login_does_not_create_audit(client, db_session):
 
 
 def test_logout_creates_audit(client, db_session):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     login_response = client.post(
         "/auth/login",
@@ -159,7 +143,7 @@ def test_repeated_logout_does_not_duplicate_audit(
     client,
     db_session,
 ):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     login_response = client.post(
         "/auth/login",
@@ -203,7 +187,7 @@ def test_audit_does_not_store_credentials(
     client,
     db_session,
 ):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     login_response = client.post(
         "/auth/login",
@@ -235,7 +219,7 @@ def test_audit_does_not_store_credentials(
         )
     ).all()
 
-    assert len(activities) == 3
+    assert len(activities) == 2
 
     for activity in activities:
         assert activity.details is None
@@ -244,44 +228,11 @@ def test_audit_does_not_store_credentials(
         assert user.password_hash not in activity.action
 
 
-def test_register_audit_error_rolls_back_user(
-    client,
-    db_session,
-):
-    username = f"audit_fail_{uuid4().hex[:16]}"
-
-    with patch.object(
-        UserActivityLogService,
-        "record",
-        side_effect=RuntimeError("Audit write failed"),
-    ):
-        with pytest.raises(
-            RuntimeError,
-            match="Audit write failed",
-        ):
-            client.post(
-                "/auth/register",
-                json={
-                    "name": "Rollback Test User",
-                    "username": username,
-                    "password": PASSWORD,
-                },
-            )
-
-    user = db_session.scalar(
-        select(User).where(
-            User.username == username,
-        )
-    )
-
-    assert user is None
-
-
 def test_login_audit_error_rolls_back_audit(
     client,
     db_session,
 ):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     with patch.object(
         UserActivityLogService,
@@ -313,7 +264,7 @@ def test_logout_audit_error_rolls_back_revocation(
     client,
     db_session,
 ):
-    user_id, username = register_user(client)
+    user_id, username = register_user(db_session)
 
     login_response = client.post(
         "/auth/login",

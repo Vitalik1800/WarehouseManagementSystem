@@ -7,13 +7,11 @@ from backend.app.db.session import get_db
 from backend.app.schemas.auth import (
     TokenResponse,
     UserLogin,
-    UserRegister,
     UserResponse
 )
 from backend.app.services.auth_service import (
     AuthService,
     InvalidCredentialsError,
-    UsernameAlreadyExistsError
 )
 
 from backend.app.core.security import create_access_token
@@ -30,35 +28,6 @@ router = APIRouter(
     prefix="/auth",
     tags=["Автентифікація"]
 )
-
-
-@router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Реєстрація нового користувача",
-    responses={
-        409: {
-            "description": "Користувач із таким логіном уже існує"
-        }
-    }
-)
-def register_user(
-    data: UserRegister,
-    db: Annotated[Session, Depends(get_db)]
-) -> UserResponse:
-    """Реєструє нового користувача системи."""
-    service = AuthService(db)
-
-    try:
-        user = service.register(data)
-    except UsernameAlreadyExistsError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc)
-        ) from exc
-
-    return UserResponse.model_validate(user)
 
 
 @router.post(

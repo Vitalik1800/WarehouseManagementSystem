@@ -4,12 +4,12 @@ from pydantic import ValidationError
 from backend.app.schemas.auth import (
     TokenResponse,
     UserLogin,
-    UserRegister,
     UserResponse,
 )
+from backend.app.schemas.users import UserCreate
 
 
-def valid_registration_data():
+def valid_user_create_data():
     return {
         "name": "Тестовий користувач",
         "username": "test_user",
@@ -17,11 +17,12 @@ def valid_registration_data():
     }
 
 
-def test_valid_registration():
-    user = UserRegister(**valid_registration_data())
+def test_valid_user_create():
+    user = UserCreate(**valid_user_create_data())
 
     assert user.name == "Тестовий користувач"
     assert user.username == "test_user"
+    assert user.role == "worker"
 
 
 @pytest.mark.parametrize(
@@ -29,11 +30,11 @@ def test_valid_registration():
     ["", "1234567"],
 )
 def test_short_password_rejected(password):
-    data = valid_registration_data()
+    data = valid_user_create_data()
     data["password"] = password
 
     with pytest.raises(ValidationError):
-        UserRegister(**data)
+        UserCreate(**data)
 
 
 @pytest.mark.parametrize(
@@ -41,11 +42,11 @@ def test_short_password_rejected(password):
     ["ab", "user name", "user!", "тест"],
 )
 def test_invalid_username_rejected(username):
-    data = valid_registration_data()
+    data = valid_user_create_data()
     data["username"] = username
 
     with pytest.raises(ValidationError):
-        UserRegister(**data)
+        UserCreate(**data)
 
 
 @pytest.mark.parametrize(
@@ -53,11 +54,11 @@ def test_invalid_username_rejected(username):
     ["", " ", "А"],
 )
 def test_invalid_name_rejected(name):
-    data = valid_registration_data()
+    data = valid_user_create_data()
     data["name"] = name
 
     with pytest.raises(ValidationError):
-        UserRegister(**data)
+        UserCreate(**data)
 
 
 def test_valid_login():

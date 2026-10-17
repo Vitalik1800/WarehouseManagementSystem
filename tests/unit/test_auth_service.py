@@ -9,7 +9,7 @@ from backend.app.services.auth_service import (
     AuthService as BackendAuthService,
     InvalidCredentialsError
 )
-from frontend.app.api.auth_service import (
+from frontend.app.services.auth_service import (
     AuthService as FrontendAuthService,
     AuthenticationError
 )

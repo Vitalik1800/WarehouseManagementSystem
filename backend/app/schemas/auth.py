@@ -8,37 +8,6 @@ from pydantic import (
 )
 
 
-class UserRegister(BaseModel):
-    name: str = Field(
-        min_length=2,
-        max_length=150,
-        description="Повне ім'я користувача"
-    )
-
-    username: str = Field(
-        min_length=3,
-        max_length=50,
-        pattern=r"^[a-zA-Z0-9_]+$",
-        description="Логін із латинських літер, цифр і підкреслень"
-    )
-
-    password: str = Field(
-        min_length=8,
-        max_length=128,
-        description="Пароль користувача"
-    )
-
-    @field_validator("name", "username")
-    @classmethod
-    def validate_not_blank(cls, value: str) -> str:
-        value = value.strip()
-
-        if not value:
-            raise ValueError("Поле не може бути порожнім")
-
-        return value
-
-
 class UserLogin(BaseModel):
     username: str = Field(
         min_length=1,

@@ -16,6 +16,9 @@ class DataTable(ctk.CTkFrame):
         rows: Sequence[Sequence[object]] | None = None,
         empty_message: str = "Немає даних",
         page_size: int = 25,
+        pagination_mode: str = "client",
+        on_page_change=None,
+        on_page_size_change=None,
         **kwargs
     ):
         if not columns:
@@ -28,6 +31,17 @@ class DataTable(ctk.CTkFrame):
                 f"Unsupported page size: {page_size}"
             )
 
+        if pagination_mode not in ("client", "server"):
+            raise ValueError(
+                f"Unsupported pagination mode: {pagination_mode}"
+            )
+
+        if on_page_change is not None and not callable(on_page_change):
+            raise TypeError("on_page_change must be callable")
+
+        if on_page_size_change is not None and not callable(on_page_size_change):
+            raise TypeError("on_page_size_change must be callable")
+
         super().__init__(
             master,
             fg_color="transparent",
@@ -39,6 +53,11 @@ class DataTable(ctk.CTkFrame):
         self.rows: list[tuple[object, ...]] = []
         self.page_size = page_size
         self.current_page = 1
+        self.pagination_mode = pagination_mode
+        self.has_next_page = False
+        self.pagination_loading = False
+        self.on_page_change = on_page_change
+        self.on_page_size_change = on_page_size_change
 
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -170,6 +189,9 @@ class DataTable(ctk.CTkFrame):
 
     def get_total_pages(self) -> int:
         """Повернути загальну кількість сторінок."""
+        if self.pagination_mode == "server":
+            return self.current_page + int(self.has_next_page)
+
         return max(
             1,
             ceil(len(self.rows) / self.page_size)
@@ -177,6 +199,9 @@ class DataTable(ctk.CTkFrame):
 
     def get_visible_rows(self) -> list[tuple[object, ...]]:
         """Повернути дані поточної сторінки."""
+        if self.pagination_mode == "server":
+            return list(self.rows)
+
         start = (
             self.current_page - 1
         ) * self.page_size
@@ -224,17 +249,20 @@ class DataTable(ctk.CTkFrame):
                         pady=6
                     )
 
-        self.page_label.configure(
-            text=(
+        if self.pagination_mode == "server":
+            page_text = f"Сторінка {self.current_page}"
+        else:
+            page_text = (
                 f"Сторінка {self.current_page} "
                 f"із {self.get_total_pages()}"
             )
-        )
+
+        self.page_label.configure(text=page_text)
 
         self.previous_button.configure(
             state=(
                 "normal"
-                if self.current_page > 1
+                if self.current_page > 1 and not self.pagination_loading
                 else "disabled"
             )
         )
@@ -243,6 +271,7 @@ class DataTable(ctk.CTkFrame):
             state=(
                 "normal"
                 if self.current_page < self.get_total_pages()
+                and not self.pagination_loading
                 else "disabled"
             )
         )
@@ -264,7 +293,8 @@ class DataTable(ctk.CTkFrame):
             normalized_rows.append(tuple(row))
 
         self.rows = normalized_rows
-        self.current_page = 1
+        if self.pagination_mode == "client":
+            self.current_page = 1
 
         self._render_page()
 
@@ -279,6 +309,16 @@ class DataTable(ctk.CTkFrame):
             raise ValueError(
                 f"Invalid page number: {page}"
             )
+
+        if self.pagination_mode == "server":
+            if self.pagination_loading:
+                return
+            if page == self.current_page:
+                return
+            if self.on_page_change is None:
+                return
+            self.on_page_change(page)
+            return
 
         self.current_page = page
         self._render_page()
@@ -305,9 +345,42 @@ class DataTable(ctk.CTkFrame):
                 f"Unsupported page size: {page_size}"
             )
 
+        if self.pagination_mode == "server":
+            if self.pagination_loading:
+                self.page_size_selector.set(str(self.page_size))
+                return
+            if self.on_page_size_change is None:
+                self.page_size_selector.set(str(self.page_size))
+                return
+            self.on_page_size_change(page_size)
+            return
+
         self.page_size = page_size
         self.current_page = 1
 
+        self._render_page()
+
+    def set_server_page(
+        self,
+        rows,
+        page: int,
+        has_next_page: bool,
+    ) -> None:
+        """Застосувати отриману із сервера сторінку."""
+        if self.pagination_mode != "server":
+            raise RuntimeError("Server pagination is not enabled")
+        if page < 1:
+            raise ValueError("Page must be positive")
+
+        self.set_rows(rows)
+        self.current_page = page
+        self.has_next_page = bool(has_next_page)
+        self.pagination_loading = False
+        self._render_page()
+
+    def set_pagination_loading(self, loading: bool) -> None:
+        """Заблокувати переходи під час запиту."""
+        self.pagination_loading = bool(loading)
         self._render_page()
 
     def clear(self) -> None:

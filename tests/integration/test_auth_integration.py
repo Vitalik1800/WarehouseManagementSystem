@@ -1,18 +1,8 @@
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
 
-from backend.app.core.security import (
-    decode_access_token,
-    verify_password
-)
 from backend.app.models.user import User
-from backend.app.schemas.auth import UserRegister
-from backend.app.services.auth_service import (
-    AuthService,
-    UsernameAlreadyExistsError
-)
 
 from fastapi.testclient import TestClient
 
@@ -29,6 +19,7 @@ from backend.app.core.security import create_access_token
 
 from backend.app.core.security import decode_access_token
 from backend.app.services.auth_service import AuthService
+from tests.helpers.users import create_test_user
 
 
 @pytest.fixture
@@ -47,199 +38,18 @@ def client(db_session):
         app.dependency_overrides.pop(get_db, None)
 
 
-def test_register_user(db_session):
-    """Перевіряє створення користувача через AuthService."""
-    username = f"register_{uuid4().hex[:12]}"
-    password = "SecurePassword123!"
-
-    registration_data = UserRegister(
-        name="Тестовий користувач",
-        username=username,
-        password=password,
-    )
-
-    service = AuthService(db_session)
-    user = service.register(registration_data)
-
-    assert user.id is not None
-    assert user.name == "Тестовий користувач"
-    assert user.username == username
-    assert user.role == "worker"
-    assert user.is_active is True
-
-    assert user.password_hash != password
-    assert user.password_hash.startswith("$argon2id$")
-    assert verify_password(password, user.password_hash)
-
-    saved_user = db_session.scalar(
-        select(User).where(User.username == username)
-    )
-
-    assert saved_user is not None
-    assert saved_user.id == user.id
-
-
-def test_register_duplicate_username(db_session):
-    """Перевіряє заборону повторної реєстрації логіна."""
-    username = f"duplicate_{uuid4().hex[:12]}"
-
-    service = AuthService(db_session)
-
-    first_user = UserRegister(
-        name="Перший користувач",
-        username=username,
-        password="FirstPassword123!",
-    )
-
-    second_user = UserRegister(
-        name="Другий користувач",
-        username=username,
-        password="SecondPassword123!",
-    )
-
-    service.register(first_user)
-
-    with pytest.raises(
-        UsernameAlreadyExistsError,
-        match="Користувач із таким логіном уже існує",
-    ):
-        service.register(second_user)
-
-    users = db_session.scalars(
-        select(User).where(User.username == username)
-    ).all()
-
-    assert len(users) == 1
-    assert users[0].name == "Перший користувач"
-
-
-def test_register_api_success(client, db_session):
-    """Перевіряє успішну реєстрацію через HTTP."""
-    username = f"api_register_{uuid4().hex[:12]}"
-    password = "SecurePassword123!"
-
+def test_public_registration_endpoint_not_found(client):
+    """Public registration must remain unavailable."""
     response = client.post(
         "/auth/register",
         json={
-            "name": "Новий користувач",
-            "username": username,
-            "password": password,
-        },
+            "name": "Unauthorized Registration",
+            "username": "public_registration_test",
+            "password": "SecurePassword123!"
+        }
     )
 
-    assert response.status_code == 201
-
-    data = response.json()
-
-    assert data["id"] > 0
-    assert data["name"] == "Новий користувач"
-    assert data["username"] == username
-    assert data["role"] == "worker"
-    assert data["is_active"] is True
-
-    assert "password" not in data
-    assert "password_hash" not in data
-
-    saved_user = db_session.scalar(
-        select(User).where(User.username == username)
-    )
-
-    assert saved_user is not None
-    assert verify_password(
-        password,
-        saved_user.password_hash,
-    )
-
-
-def test_register_api_duplicate_username(client, db_session):
-    """Перевіряє HTTP 409 для вже зайнятого логіна."""
-    username = f"api_duplicate_{uuid4().hex[:12]}"
-
-    first_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Перший користувач",
-            "username": username,
-            "password": "FirstPassword123!",
-        },
-    )
-
-    assert first_response.status_code == 201
-
-    second_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Другий користувач",
-            "username": username,
-            "password": "SecondPassword123!",
-        },
-    )
-
-    assert second_response.status_code == 409
-    assert second_response.json() == {
-        "detail": "Користувач із таким логіном уже існує"
-    }
-
-    users = db_session.scalars(
-        select(User).where(User.username == username)
-    ).all()
-
-    assert len(users) == 1
-    assert users[0].name == "Перший користувач"
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {},
-        {
-            "name": "А",
-            "username": "valid_user",
-            "password": "SecurePassword123!",
-        },
-        {
-            "name": "Тестовий користувач",
-            "username": "ab",
-            "password": "SecurePassword123!",
-        },
-        {
-            "name": "Тестовий користувач",
-            "username": "invalid-user!",
-            "password": "SecurePassword123!",
-        },
-        {
-            "name": "Тестовий користувач",
-            "username": "valid_user",
-            "password": "1234567",
-        },
-        {
-            "name": "Тестовий користувач",
-            "username": "valid_user",
-        },
-    ],
-    ids=[
-        "empty_payload",
-        "short_name",
-        "short_username",
-        "invalid_username_characters",
-        "short_password",
-        "missing_password",
-    ],
-)
-def test_register_api_invalid_data(client, payload):
-    """Перевіряє HTTP 422 для некоректних даних."""
-    response = client.post(
-        "/auth/register",
-        json=payload,
-    )
-
-    assert response.status_code == 422
-
-    data = response.json()
-
-    assert "detail" in data
-    assert isinstance(data["detail"], list)
-    assert len(data["detail"]) > 0
+    assert response.status_code == 404
 
 
 def test_login_api_success(client, db_session):
@@ -247,18 +57,14 @@ def test_login_api_success(client, db_session):
     username = f"api_login_{uuid4().hex[:12]}"
     password = "SecurePassword123!"
 
-    registration_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Користувач для входу",
-            "username": username,
-            "password": password,
-        },
+    user = create_test_user(
+        db_session,
+        name="Користувач для входу",
+        username=username,
+        password=password,
     )
 
-    assert registration_response.status_code == 201
-
-    user_id = registration_response.json()["id"]
+    user_id = user.id
 
     login_response = client.post(
         "/auth/login",
@@ -285,27 +91,23 @@ def test_login_api_success(client, db_session):
     assert "jti" in payload
 
 
-def test_login_api_invalid_password(client):
+def test_login_api_invalid_password(client, db_session):
     """Перевіряє HTTP 401 для неправильного пароля."""
     username = f"api_login_wrong_{uuid4().hex[:12]}"
 
-    registration_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Користувач для перевірки",
-            "username": username,
-            "password": "CorrectPassword123!",
-        },
+    create_test_user(
+        db_session,
+        name="Користувач для перевірки",
+        username=username,
+        password="CorrectPassword123!"
     )
-
-    assert registration_response.status_code == 201
 
     login_response = client.post(
         "/auth/login",
         json={
             "username": username,
-            "password": "WrongPassword123!",
-        },
+            "password": "WrongPassword123!"
+        }
     )
 
     assert login_response.status_code == 401
@@ -347,25 +149,13 @@ def test_login_api_inactive_user(client, db_session):
     username = f"api_inactive_{uuid4().hex[:12]}"
     password = "SecurePassword123!"
 
-    registration_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Неактивний користувач",
-            "username": username,
-            "password": password,
-        },
+    create_test_user(
+        db_session,
+        name="Неактивний користувач",
+        username=username,
+        password=password,
+        is_active=False
     )
-
-    assert registration_response.status_code == 201
-
-    user = db_session.scalar(
-        select(User).where(User.username == username)
-    )
-
-    assert user is not None
-
-    user.is_active = False
-    db_session.flush()
 
     login_response = client.post(
         "/auth/login",
@@ -435,22 +225,17 @@ def test_login_api_invalid_data(client, payload):
     assert "access_token" not in data
 
 
-def test_get_me_api_success(client):
+def test_get_me_api_success(client, db_session):
     """Перевіряє отримання поточного користувача за JWT."""
     username = f"api_me_{uuid4().hex[:12]}"
     password = "SecurePassword123!"
 
-    registration_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Тестовий працівник",
-            "username": username,
-            "password": password,
-        },
+    user = create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password,
     )
-
-    assert registration_response.status_code == 201
-    registered_user = registration_response.json()
 
     login_response = client.post(
         "/auth/login",
@@ -473,8 +258,8 @@ def test_get_me_api_success(client):
     assert response.status_code == 200
 
     assert response.json() == {
-        "id": registered_user["id"],
-        "name": "Тестовий працівник",
+        "id": user.id,
+        "name": user.name,
         "username": username,
         "role": "worker",
         "is_active": True,
@@ -561,17 +346,14 @@ def test_get_me_api_inactive_user(client, db_session):
     username = f"api_me_inactive_{uuid4().hex[:12]}"
     password = "SecurePassword123!"
 
-    registration_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Неактивний працівник",
-            "username": username,
-            "password": password,
-        },
+    user = create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password,
     )
 
-    assert registration_response.status_code == 201
-    user_id = registration_response.json()["id"]
+    user_id = user.id
 
     login_response = client.post(
         "/auth/login",
@@ -646,22 +428,18 @@ def test_get_me_api_user_not_found(client, db_session):
     assert "username" not in response.json()
 
 
-
 def test_get_me_api_revoked_token(client, db_session):
     """Перевіряє відхилення відкликаного JWT."""
 
     username = f"revoked_{uuid4().hex[:12]}"
+    password = "SecurePassword123!"
 
-    register_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Revoked Token User",
-            "username": username,
-            "password": "SecurePassword123!"
-        }
+    create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password,
     )
-
-    assert register_response.status_code == 201
 
     login_response = client.post(
         "/auth/login",
@@ -707,21 +485,18 @@ def test_get_me_api_revoked_token(client, db_session):
     )
 
 
-def test_logout_api_success(client):
+def test_logout_api_success(client, db_session):
     """Перевіряє успішний вихід користувача через API."""
 
     username = f"logout_{uuid4().hex[:12]}"
+    password = "SecurePassword123!"
 
-    register_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Logout Test User",
-            "username": username,
-            "password": "SecurePassword123!"
-        }
+    create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password,
     )
-
-    assert register_response.status_code == 201
 
     login_response = client.post(
         "/auth/login",
@@ -786,7 +561,7 @@ def test_logout_api_missing_token(client):
     )
 
 
-def test_logout_api_invalid_token(client):
+def test_logout_api_invalid_token(client, db_session):
     """Перевіряє вихід із системи з недійсним JWT."""
 
     response = client.post(
@@ -807,21 +582,18 @@ def test_logout_api_invalid_token(client):
     )
 
 
-def test_logout_api_already_revoked_token(client):
+def test_logout_api_already_revoked_token(client, db_session):
     """Перевіряє повторний logout із відкликаним JWT."""
 
     username = f"logout_repeat_{uuid4().hex[:12]}"
+    password = "SecurePassword123!"
 
-    register_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Repeat Logout User",
-            "username": username,
-            "password": "SecurePassword123!"
-        }
+    create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password,
     )
-
-    assert register_response.status_code == 201
 
     login_response = client.post(
         "/auth/login",
@@ -912,17 +684,14 @@ def test_logout_api_inactive_user(client, db_session):
     from backend.app.models.user import User
 
     username = f"logout_inactive_{uuid4().hex[:12]}"
+    password = "SecurePassword123!"
 
-    register_response = client.post(
-        "/auth/register",
-        json={
-            "name": "Inactive Logout User",
-            "username": username,
-            "password": "SecurePassword123!"
-        }
+    user = create_test_user(
+        db_session,
+        name="Тестовий користувач",
+        username=username,
+        password=password
     )
-
-    assert register_response.status_code == 201
 
     login_response = client.post(
         "/auth/login",

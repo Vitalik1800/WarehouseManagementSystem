@@ -10,7 +10,7 @@ from frontend.app.api.client import (
 )
 from frontend.app.views.login_view import LoginView
 
-from frontend.app.api.auth_service import AuthenticationError
+from frontend.app.services.auth_service import AuthenticationError
 from frontend.app.api.client import APIClientError
 
 

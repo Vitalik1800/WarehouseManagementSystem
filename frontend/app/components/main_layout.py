@@ -12,6 +12,15 @@ from frontend.app.components.user_info_panel import UserInfoPanel
 
 from frontend.app.api.client import APIClient
 from frontend.app.views.dashboard_view import DashboardView
+from frontend.app.views.register_view import RegisterView
+from frontend.app.views.users_view import UsersView
+from frontend.app.views.categories_view import CategoriesView
+from frontend.app.views.suppliers_view import SuppliersView
+from frontend.app.views.products_view import ProductsView
+from frontend.app.views.storage_locations_view import StorageLocationsView
+from frontend.app.services.user_registration_service import (
+    UserRegistrationService,
+)
 
 
 class MainLayout(ctk.CTkFrame):
@@ -24,10 +33,13 @@ class MainLayout(ctk.CTkFrame):
         "products": "Перегляд та управління товарами",
         "categories": "Управління категоріями товарів",
         "warehouses": "Перегляд та управління складами",
+        "storage_locations": "Управління місцями зберігання",
         "stock_balances": "Контроль актуальних залишків товарів",
         "stock_movements": "Облік надходжень, переміщень та списань",
         "activity_log": "Історія дій користувачів системи",
         "settings": "Налаштування настільного застосунку",
+        "register": "Створення облікових записів адміністратором",
+        "users": "Перегляд та керування користувачами системи",
     }
 
     def __init__(
@@ -48,7 +60,7 @@ class MainLayout(ctk.CTkFrame):
         self.current_page = "dashboard"
         self.on_logout = on_logout
         self.api_client = api_client
-        self.active_view: DashboardView | None = None
+        self.active_view: DashboardView | RegisterView | UsersView | None = None
 
         self.current_user = (
             current_user.copy()
@@ -146,7 +158,12 @@ class MainLayout(ctk.CTkFrame):
     def _create_sidebar(self):
         self.sidebar = Sidebar(
             self,
-            on_navigate=self._show_page
+            on_navigate=self._show_page,
+            user_role=(
+                self.current_user.get("role", "worker")
+                if self.current_user is not None
+                else "worker"
+            ),
         )
         self.sidebar.grid(
             row=1,
@@ -237,6 +254,20 @@ class MainLayout(ctk.CTkFrame):
                 f"Unknown page: {page_id}"
             )
 
+        if page_id in ("register", "users"):
+            if (
+                self.current_user is None
+                or self.current_user.get("role") != "admin"
+            ):
+                raise PermissionError(
+                    "Лише адміністратор може відкривати цей розділ"
+                )
+
+            if self.api_client is None:
+                raise RuntimeError(
+                    "Для адміністративного розділу потрібне підключення до API"
+                )
+
         self.current_page = page_id
 
         self.page_header.set_title(
@@ -263,6 +294,83 @@ class MainLayout(ctk.CTkFrame):
             self.active_view = DashboardView(
                 self.page_container,
                 api_client=self.api_client,
+            )
+
+            self.active_view.grid(
+                row=0,
+                column=0,
+                sticky="nsew",
+            )
+
+        elif page_id == "products":
+            if self.api_client is None:
+                raise RuntimeError("Для товарів потрібне підключення до API")
+            self.active_view = ProductsView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(
+                    self.current_user.get("role", "worker")
+                    if self.current_user is not None else "worker"
+                ),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "suppliers":
+            if self.api_client is None:
+                raise RuntimeError("Для постачальників потрібне підключення до API")
+            self.active_view = SuppliersView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(
+                    self.current_user.get("role", "worker")
+                    if self.current_user is not None else "worker"
+                ),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "storage_locations":
+            if self.api_client is None:
+                raise RuntimeError("Для місць зберігання потрібне підключення до API")
+            self.active_view = StorageLocationsView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(self.current_user.get("role", "worker") if self.current_user else "worker"),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "categories":
+            if self.api_client is None:
+                raise RuntimeError("Для категорій потрібне підключення до API")
+            self.active_view = CategoriesView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(
+                    self.current_user.get("role", "worker")
+                    if self.current_user is not None else "worker"
+                ),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "users":
+            self.active_view = UsersView(
+                self.page_container,
+                api_client=self.api_client,
+            )
+
+            self.active_view.grid(
+                row=0,
+                column=0,
+                sticky="nsew",
+            )
+
+        elif page_id == "register":
+            registration_service = UserRegistrationService(
+                self.api_client
+            )
+
+            self.active_view = RegisterView(
+                self.page_container,
+                registration_service=registration_service,
             )
 
             self.active_view.grid(

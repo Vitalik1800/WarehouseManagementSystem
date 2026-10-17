@@ -10,17 +10,22 @@ class Sidebar(ctk.CTkFrame):
         ("dashboard", "Головна"),
         ("products", "Товари"),
         ("categories", "Категорії"),
+        ("suppliers", "Постачальники"),
+        ("storage_locations", "Місця зберігання"),
         ("warehouses", "Склади"),
         ("stock_balances", "Залишки"),
         ("stock_movements", "Складські операції"),
         ("activity_log", "Журнал активності"),
-        ("settings", "Налаштування")
+        ("settings", "Налаштування"),
+        ("register", "Реєстрація користувача"),
+        ("users", "Користувачі")
     )
 
     def __init__(
             self,
             master,
             on_navigate: Callable[[str], None],
+        user_role: str = "worker",
             **kwargs
     ):
         super().__init__(
@@ -31,6 +36,7 @@ class Sidebar(ctk.CTkFrame):
         )
 
         self.on_navigate = on_navigate
+        self.user_role = user_role
         self.active_page = "dashboard"
         self.buttons: dict[str, ctk.CTkButton] = {}
 
@@ -55,6 +61,8 @@ class Sidebar(ctk.CTkFrame):
         )
 
         for page_id, label in self.NAVIGATION_ITEMS:
+            if page_id in ("register", "users") and self.user_role != "admin":
+                continue
             button = ctk.CTkButton(
                 self,
                 text=label,

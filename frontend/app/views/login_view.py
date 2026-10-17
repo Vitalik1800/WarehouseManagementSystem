@@ -5,7 +5,7 @@ from typing import Any
 
 import customtkinter as ctk
 
-from frontend.app.api.auth_service import (
+from frontend.app.services.auth_service import (
     AuthService,
     AuthenticationError
 )

@@ -3,10 +3,16 @@ from sqlalchemy.orm import Session
 
 from backend.app.models.user import User
 from backend.app.repositories.user_repository import UserRepository
-from backend.app.schemas.users import UserUpdate, UserRoleUpdate
+from backend.app.schemas.users import (
+    UserCreate,
+    UserUpdate,
+    UserRoleUpdate
+)
 from backend.app.services.user_activity_log_service import (
     UserActivityLogService
 )
+
+from backend.app.core.security import hash_password
 
 
 class UserNotFoundError(Exception):
@@ -31,6 +37,59 @@ class UserService:
         self.db = db
         self.users = UserRepository(db)
         self.activities = UserActivityLogService(db)
+
+    def create_user(
+        self,
+        data: UserCreate,
+        actor_id: int
+    ) -> User:
+        """Створює користувача та записує адміністративну дію."""
+
+        existing_user = self.users.get_by_username(data.username)
+
+        if existing_user is not None:
+            raise UsernameAlreadyExistsError(
+                "Користувач із таким логіном уже існує"
+            )
+
+        password_hash = hash_password(data.password)
+
+        try:
+            user = self.users.create(
+                name=data.name,
+                username=data.username,
+                password_hash=password_hash,
+                role=data.role
+            )
+
+            self.activities.record(
+                action="user.created",
+                actor_id=actor_id,
+                entity_type="user",
+                entity_id=user.id,
+                details={
+                    "new_role": user.role
+                }
+            )
+
+            self.db.commit()
+            self.db.refresh(user)
+
+            return user
+
+        except IntegrityError:
+            self.db.rollback()
+
+            if self.users.get_by_username(data.username) is not None:
+                raise UsernameAlreadyExistsError(
+                    "Користувач із таким логіном уже існує"
+                ) from None
+
+            raise
+
+        except Exception:
+            self.db.rollback()
+            raise
 
     def update_user(
         self,
