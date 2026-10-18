@@ -1,6 +1,9 @@
 import pytest
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from backend.app.models.warehouse import Warehouse
 
 from tests.db_config import create_test_engine
 
@@ -31,3 +34,20 @@ def db_session(test_engine):
                 yield session
         finally:
             transaction.rollback()
+
+
+
+@pytest.fixture
+def main_warehouse_id(db_session):
+    """Return the MAIN warehouse ID from the isolated test database."""
+    warehouse_id = db_session.scalar(
+        select(Warehouse.id).where(Warehouse.code == "MAIN")
+    )
+
+    if warehouse_id is None:
+        pytest.fail(
+            "MAIN warehouse is missing from the test database. "
+            "Check the test database migration and seed data."
+        )
+
+    return warehouse_id

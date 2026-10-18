@@ -55,7 +55,7 @@ def authorize():
 
 
 @pytest.fixture
-def dashboard_data(db_session):
+def dashboard_data(db_session, main_warehouse_id):
     marker = uuid4().hex[:12]
 
     category = Category(
@@ -64,7 +64,7 @@ def dashboard_data(db_session):
 
     location = StorageLocation(
         name=f"DashboardLocation_{marker}",
-    )
+     warehouse_id=main_warehouse_id,)
 
     supplier = Supplier(
         name=f"DashboardSupplier_{marker}",

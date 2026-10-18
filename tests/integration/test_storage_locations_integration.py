@@ -64,11 +64,11 @@ def worker_headers(db_session):
 
 
 @pytest.fixture
-def location(db_session):
+def location(db_session, main_warehouse_id):
     location = StorageLocation(
         name=f"Location_{uuid4().hex[:12]}",
         description="Test storage location",
-    )
+     warehouse_id=main_warehouse_id,)
 
     db_session.add(location)
     db_session.flush()
@@ -134,6 +134,7 @@ def test_get_location_success(
         "id": location.id,
         "name": location.name,
         "description": location.description,
+        "warehouse_id": location.warehouse_id,
     }
 
 
@@ -319,11 +320,11 @@ def test_update_location_clear_description(
 
 
 def test_update_location_duplicate_name(
-    client, db_session, location, admin_headers
+    client, db_session, location, admin_headers, main_warehouse_id
 ):
     other = StorageLocation(
         name=f"Other_{uuid4().hex[:12]}"
-    )
+    , warehouse_id=main_warehouse_id)
 
     db_session.add(other)
     db_session.flush()
@@ -528,12 +529,12 @@ def test_delete_location_with_products_conflict(
 
 
 def test_list_locations_pagination(
-    client, db_session, admin_headers
+    client, db_session, admin_headers, main_warehouse_id
 ):
     suffix = uuid4().hex[:12]
 
     locations = [
-        StorageLocation(name=f"Pagination_{suffix}_{index}")
+        StorageLocation(name=f"Pagination_{suffix}_{index}", warehouse_id=main_warehouse_id)
         for index in range(3)
     ]
 
@@ -639,14 +640,14 @@ def test_update_location_name_trimmed(
 def test_list_locations_nonzero_offset(
     client,
     db_session,
-    admin_headers,
+    admin_headers, main_warehouse_id,
 ):
     suffix = uuid4().hex[:12]
 
     locations = [
         StorageLocation(
             name=f"OffsetLocation_{suffix}_{index}"
-        )
+        , warehouse_id=main_warehouse_id)
         for index in range(3)
     ]
 
@@ -695,14 +696,14 @@ def test_list_locations_nonzero_offset(
 def test_list_locations_ordered_by_id(
     client,
     db_session,
-    admin_headers,
+    admin_headers, main_warehouse_id,
 ):
     suffix = uuid4().hex[:12]
 
     locations = [
         StorageLocation(
             name=f"OrderedLocation_{suffix}_{index}"
-        )
+        , warehouse_id=main_warehouse_id)
         for index in range(3)
     ]
 

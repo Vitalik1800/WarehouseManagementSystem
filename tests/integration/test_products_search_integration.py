@@ -8,14 +8,14 @@ from backend.app.repositories.product_repository import ProductRepository
 
 
 @pytest.fixture
-def product_data(db_session):
+def product_data(db_session, main_warehouse_id):
     marker = uuid4().hex[:12]
 
     category_a = Category(name=f"SearchCategoryA_{marker}")
     category_b = Category(name=f"SearchCategoryB_{marker}")
 
-    location_a = StorageLocation(name=f"SearchLocationA_{marker}")
-    location_b = StorageLocation(name=f"SearchLocationB_{marker}")
+    location_a = StorageLocation(name=f"SearchLocationA_{marker}", warehouse_id=main_warehouse_id)
+    location_b = StorageLocation(name=f"SearchLocationB_{marker}", warehouse_id=main_warehouse_id)
 
     db_session.add_all([
         category_a,

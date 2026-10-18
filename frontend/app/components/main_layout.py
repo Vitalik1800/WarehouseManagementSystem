@@ -5,6 +5,7 @@ import customtkinter as ctk
 from frontend.app.components.page_header import PageHeader
 from frontend.app.components.sidebar import Sidebar
 from frontend.app.core.config import get_frontend_settings
+from frontend.app.core.appearance_settings_store import AppearanceSettingsStore
 
 from typing import Any
 
@@ -18,6 +19,11 @@ from frontend.app.views.categories_view import CategoriesView
 from frontend.app.views.suppliers_view import SuppliersView
 from frontend.app.views.products_view import ProductsView
 from frontend.app.views.storage_locations_view import StorageLocationsView
+from frontend.app.views.warehouses_view import WarehousesView
+from frontend.app.views.activity_log_view import ActivityLogView
+from frontend.app.views.settings_view import SettingsView
+from frontend.app.views.stock_movements_view import StockMovementsView
+from frontend.app.views.stock_balances_view import StockBalancesView
 from frontend.app.services.user_registration_service import (
     UserRegistrationService,
 )
@@ -57,6 +63,7 @@ class MainLayout(ctk.CTkFrame):
         )
 
         self.settings = get_frontend_settings()
+        self.appearance_store = AppearanceSettingsStore()
         self.current_page = "dashboard"
         self.on_logout = on_logout
         self.api_client = api_client
@@ -118,7 +125,7 @@ class MainLayout(ctk.CTkFrame):
             pady=14
         )
         self.theme_selector.set(
-            self.settings.frontend_appearance_mode
+            self.appearance_store.load(self.settings.frontend_appearance_mode)
         )
 
         if self.on_logout is not None:
@@ -153,7 +160,10 @@ class MainLayout(ctk.CTkFrame):
                 f"Unsupported appearance mode: {mode}"
             )
 
+        self.appearance_store.save(mode)
         ctk.set_appearance_mode(mode)
+        if self.active_view is not None and isinstance(self.active_view, SettingsView):
+            self.active_view.set_appearance_mode(mode)
 
     def _create_sidebar(self):
         self.sidebar = Sidebar(
@@ -328,6 +338,16 @@ class MainLayout(ctk.CTkFrame):
             )
             self.active_view.grid(row=0, column=0, sticky="nsew")
 
+        elif page_id == "warehouses":
+            if self.api_client is None:
+                raise RuntimeError("Для складів потрібне підключення до API")
+            self.active_view = WarehousesView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(self.current_user.get("role", "worker") if self.current_user else "worker"),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
         elif page_id == "storage_locations":
             if self.api_client is None:
                 raise RuntimeError("Для місць зберігання потрібне підключення до API")
@@ -348,6 +368,49 @@ class MainLayout(ctk.CTkFrame):
                     self.current_user.get("role", "worker")
                     if self.current_user is not None else "worker"
                 ),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "stock_movements":
+            if self.api_client is None:
+                raise RuntimeError("Для складських операцій потрібне підключення до API")
+            self.active_view = StockMovementsView(
+                self.page_container, api_client=self.api_client,
+                user_role=(self.current_user.get("role", "worker") if self.current_user else "worker"),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "stock_balances":
+            if self.api_client is None:
+                raise RuntimeError("Для залишків потрібне підключення до API")
+            self.active_view = StockBalancesView(
+                self.page_container, api_client=self.api_client,
+                user_role=(self.current_user.get("role", "worker") if self.current_user else "worker"),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "activity_log":
+            if self.api_client is None:
+                raise RuntimeError("Для журналу активності потрібне підключення до API")
+            self.active_view = ActivityLogView(
+                self.page_container,
+                api_client=self.api_client,
+                user_role=(
+                    self.current_user.get("role", "worker")
+                    if self.current_user is not None else "worker"
+                ),
+            )
+            self.active_view.grid(row=0, column=0, sticky="nsew")
+
+        elif page_id == "settings":
+            self.active_view = SettingsView(
+                self.page_container,
+                appearance_mode=self.appearance_store.load(
+                    self.settings.frontend_appearance_mode
+                ),
+                on_appearance_change=self._change_appearance_mode,
+                api_base_url=self.settings.frontend_api_base_url,
+                request_timeout=self.settings.frontend_request_timeout,
             )
             self.active_view.grid(row=0, column=0, sticky="nsew")
 

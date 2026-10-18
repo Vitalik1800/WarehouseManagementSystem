@@ -53,7 +53,7 @@ def authorize():
 
 
 @pytest.fixture
-def stock_data(db_session):
+def stock_data(db_session, main_warehouse_id):
     marker = uuid4().hex[:12]
 
     category_a = Category(
@@ -65,10 +65,10 @@ def stock_data(db_session):
 
     location_a = StorageLocation(
         name=f"BalanceLocationA_{marker}"
-    )
+    , warehouse_id=main_warehouse_id)
     location_b = StorageLocation(
         name=f"BalanceLocationB_{marker}"
-    )
+    , warehouse_id=main_warehouse_id)
 
     db_session.add_all([
         category_a,

@@ -63,11 +63,11 @@ def worker_headers(db_session):
 
 
 @pytest.fixture
-def product_data(db_session):
+def product_data(db_session, main_warehouse_id):
     suffix = uuid4().hex[:12]
 
     category = Category(name=f"ProductCategory_{suffix}")
-    location = StorageLocation(name=f"ProductLocation_{suffix}")
+    location = StorageLocation(name=f"ProductLocation_{suffix}", warehouse_id=main_warehouse_id)
 
     db_session.add_all([category, location])
     db_session.flush()

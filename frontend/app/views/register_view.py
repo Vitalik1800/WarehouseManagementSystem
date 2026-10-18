@@ -36,7 +36,10 @@ class RegisterView(ctk.CTkFrame):
         self._poll_job: str | None = None
         self._closed = False
 
+        # Center the form without forcing it to span very wide windows.
         self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=0)
+        self.grid_columnconfigure(2, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
         self._create_widgets()
@@ -47,7 +50,10 @@ class RegisterView(ctk.CTkFrame):
             width=460,
             corner_radius=12,
         )
-        self.card.grid(row=0, column=0, padx=24, pady=16, sticky="n")
+        # Fill available height; adapt width up to a comfortable maximum.
+        self.card.grid(row=0, column=1, padx=16, pady=12, sticky="ns")
+        self._card_width = 460
+        self.bind("<Configure>", self._resize_card, add="+")
         self.card.grid_columnconfigure(0, weight=1)
 
         self.name_field = FormField(
@@ -129,6 +135,14 @@ class RegisterView(ctk.CTkFrame):
         self.register_button.grid(
             row=7, column=0, sticky="ew", padx=20, pady=(0, 20)
         )
+
+    def _resize_card(self, event) -> None:
+        """Keep the form centered and scrollable as the window is resized."""
+        available_width = max(1, event.width - 32)
+        target_width = min(520, available_width)
+        if target_width != self._card_width:
+            self._card_width = target_width
+            self.card.configure(width=target_width)
 
     def _validate_fields(self) -> bool:
         """Перевіряє введені дані до надсилання API-запиту."""

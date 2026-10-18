@@ -21,6 +21,20 @@ def unique_value(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex[:12]}"
 
 
+
+def _require_main_warehouse_id(session):
+    from backend.app.models.warehouse import Warehouse
+
+    warehouse_id = session.scalar(
+        select(Warehouse.id).where(Warehouse.code == "MAIN")
+    )
+    if warehouse_id is None:
+        raise AssertionError(
+            "MAIN warehouse is missing from the test database"
+        )
+    return warehouse_id
+
+
 def create_sample_records(db: Session):
     category = Category(
         name=unique_value("Category"),
@@ -30,6 +44,7 @@ def create_sample_records(db: Session):
     location = StorageLocation(
         name=unique_value("Location"),
         description="Місце зберігання для інтеграційного тестування",
+        warehouse_id=_require_main_warehouse_id(db),
     )
 
     supplier = Supplier(

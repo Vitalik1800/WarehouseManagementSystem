@@ -5,9 +5,11 @@ from typing import Any
 import customtkinter as ctk
 
 from frontend.app.services.auth_service import AuthService
+from frontend.app.services.session_restore import restore_session_worker
 from frontend.app.api.client import APIClient, APIClientError
 from frontend.app.components.main_layout import MainLayout
 from frontend.app.core.config import get_frontend_settings
+from frontend.app.core.appearance_settings_store import AppearanceSettingsStore
 from frontend.app.core.logging_config import get_frontend_logger
 from frontend.app.views.login_view import LoginView
 
@@ -32,6 +34,9 @@ class WarehouseApplication(ctk.CTk):
         self._logging_out = False
         self._logout_future: Future | None = None
         self._logout_poll_job: str | None = None
+        self._restore_future: Future | None = None
+        self._restore_poll_job: str | None = None
+        self._restore_label: ctk.CTkLabel | None = None
 
         self._executor = ThreadPoolExecutor(
             max_workers=1,
@@ -53,9 +58,51 @@ class WarehouseApplication(ctk.CTk):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        self._show_login()
+        self._start_session_restore()
 
         self.logger.info("Головний інтерфейс ініціалізовано")
+
+    def _start_session_restore(self) -> None:
+        """Check stored credentials without blocking the Tkinter event loop."""
+        self._restore_label = ctk.CTkLabel(self, text="Відновлення сесії...")
+        self._restore_label.grid(row=0, column=0, sticky="nsew")
+        try:
+            self._restore_future = self._executor.submit(restore_session_worker, self.settings)
+        except RuntimeError:
+            self._finish_session_restore(None)
+            return
+        self._restore_poll_job = self.after(50, self._check_session_restore)
+
+    def _check_session_restore(self) -> None:
+        self._restore_poll_job = None
+        if self._closing:
+            return
+        future = self._restore_future
+        if future is None:
+            return
+        if not future.done():
+            self._restore_poll_job = self.after(50, self._check_session_restore)
+            return
+        self._restore_future = None
+        try:
+            result = future.result()
+        except Exception as exc:
+            # Do not log refresh tokens or other secret values.
+            self.logger.warning("Не вдалося відновити сесію (%s)", type(exc).__name__)
+            result = None
+        self._finish_session_restore(result)
+
+    def _finish_session_restore(self, result) -> None:
+        if self._closing:
+            return
+        if self._restore_label is not None:
+            self._restore_label.destroy()
+            self._restore_label = None
+        if result is None:
+            self._show_login()
+            return
+        self.api_client.set_access_token(result.access_token)
+        self._on_login_success(result.user)
 
     def _show_login(self) -> None:
         """Відображає форму входу."""
@@ -228,6 +275,17 @@ class WarehouseApplication(ctk.CTk):
             "Завершення роботи WarehouseManagementSystem"
         )
 
+        if self._restore_poll_job is not None:
+            try:
+                self.after_cancel(self._restore_poll_job)
+            except ValueError:
+                pass
+            self._restore_poll_job = None
+
+        if self._restore_label is not None:
+            self._restore_label.destroy()
+            self._restore_label = None
+
         if self._logout_poll_job is not None:
             try:
                 self.after_cancel(self._logout_poll_job)
@@ -263,7 +321,7 @@ def main():
     settings = get_frontend_settings()
 
     ctk.set_appearance_mode(
-        settings.frontend_appearance_mode
+        AppearanceSettingsStore().load(settings.frontend_appearance_mode)
     )
     ctk.set_default_color_theme(
         settings.frontend_color_theme

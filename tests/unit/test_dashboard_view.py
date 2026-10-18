@@ -4,6 +4,8 @@ from unittest.mock import Mock
 import customtkinter as ctk
 import pytest
 
+from tests.gui_cleanup import cleanup_gui
+
 from frontend.app.api.client import (
     APIConnectionError,
     APIRequestError
@@ -48,8 +50,7 @@ def dashboard(monkeypatch):
     if view.winfo_exists():
         view.destroy()
 
-    if root.winfo_exists():
-        root.destroy()
+    cleanup_gui(root)
 
 
 def finish_request(view, future, *, result=None, error=None):

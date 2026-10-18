@@ -2,6 +2,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.models.storage_location import StorageLocation
+from backend.app.repositories.warehouse_repository import WarehouseRepository
 from backend.app.repositories.storage_location_repository import (
     StorageLocationRepository
 )
@@ -28,10 +29,15 @@ class StorageLocationInUseError(Exception):
     pass
 
 
+class StorageLocationWarehouseNotFoundError(Exception):
+    pass
+
+
 class StorageLocationService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.locations = StorageLocationRepository(db)
+        self.warehouses = WarehouseRepository(db)
 
     def get_location(
             self,
@@ -66,9 +72,21 @@ class StorageLocationService:
                 "Місце зберігання з такою назвою вже існує"
             )
 
+        if data.warehouse_id is None:
+            warehouse = self.warehouses.get_by_code('MAIN')
+        else:
+            warehouse = self.warehouses.get_by_id(data.warehouse_id)
+
+        if warehouse is None:
+            raise StorageLocationWarehouseNotFoundError(
+                'Warehouse not found'
+            )
+
         try:
+            values = data.model_dump(exclude={'warehouse_id'})
             location = self.locations.create(
-                **data.model_dump()
+                **values,
+                warehouse_id=warehouse.id
             )
 
             self.db.commit()

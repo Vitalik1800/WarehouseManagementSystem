@@ -1,3 +1,4 @@
+from backend.app.models.warehouse import Warehouse
 from backend.app.models.category import Category
 from backend.app.models.product import Product
 from backend.app.models.revoked_token import RevokedToken
@@ -5,10 +6,13 @@ from backend.app.models.stock_movement import StockMovement
 from backend.app.models.storage_location import StorageLocation
 from backend.app.models.supplier import Supplier
 from backend.app.models.user import User
+from backend.app.models.user_session import UserSession
 from backend.app.models.user_activity_log import UserActivityLog
 
 __all__ = [
+    "Warehouse",
     "User",
+    "UserSession",
     "Category",
     "Supplier",
     "Product",

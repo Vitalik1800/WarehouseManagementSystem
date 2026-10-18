@@ -656,7 +656,7 @@ def test_delete_supplier_invalid_id(
 def test_delete_supplier_in_use_returns_409(
         client,
         db_session,
-        admin_headers,
+        admin_headers, main_warehouse_id,
 ):
     unique_id = uuid4().hex[:12]
 
@@ -666,7 +666,7 @@ def test_delete_supplier_in_use_returns_409(
 
     location = StorageLocation(
         name=f"SupplierLocation_{unique_id}",
-    )
+     warehouse_id=main_warehouse_id,)
 
     supplier = Supplier(
         name=f"SupplierInUse_{unique_id}",

@@ -195,12 +195,14 @@ def test_create_location_success():
 
     location = repository.create(
         name="Warehouse A",
+        warehouse_id=1,
         description="Main warehouse",
     )
 
     assert isinstance(location, StorageLocation)
     assert location.name == "Warehouse A"
     assert location.description == "Main warehouse"
+    assert location.warehouse_id == 1
 
     db.add.assert_called_once_with(location)
     db.flush.assert_called_once()
@@ -211,7 +213,8 @@ def test_create_location_without_description():
     db, repository = make_repository()
 
     location = repository.create(
-        name="Warehouse A"
+        name="Warehouse A",
+        warehouse_id=1,
     )
 
     assert isinstance(location, StorageLocation)
@@ -235,7 +238,8 @@ def test_create_location_flush_error():
         match="Flush failure",
     ):
         repository.create(
-            name="Warehouse A"
+            name="Warehouse A",
+            warehouse_id=1,
         )
 
     db.add.assert_called_once()

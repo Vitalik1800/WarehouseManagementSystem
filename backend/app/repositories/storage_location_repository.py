@@ -50,11 +50,13 @@ class StorageLocationRepository:
         self,
         *,
         name: str,
+        warehouse_id: int,
         description: str | None = None
     ) -> StorageLocation:
         location = StorageLocation(
             name=name,
-            description=description
+            description=description,
+            warehouse_id=warehouse_id
         )
 
         self.db.add(location)

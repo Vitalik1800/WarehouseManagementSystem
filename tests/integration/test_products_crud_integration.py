@@ -42,13 +42,13 @@ def admin_headers(db_session):
 
 
 @pytest.fixture
-def product_references(db_session):
+def product_references(db_session, main_warehouse_id):
     suffix = uuid4().hex[:12]
 
     category_a = Category(name=f"CRUDCategoryA_{suffix}")
     category_b = Category(name=f"CRUDCategoryB_{suffix}")
-    location_a = StorageLocation(name=f"CRUDLocationA_{suffix}")
-    location_b = StorageLocation(name=f"CRUDLocationB_{suffix}")
+    location_a = StorageLocation(name=f"CRUDLocationA_{suffix}", warehouse_id=main_warehouse_id)
+    location_b = StorageLocation(name=f"CRUDLocationB_{suffix}", warehouse_id=main_warehouse_id)
 
     db_session.add_all([
         category_a,

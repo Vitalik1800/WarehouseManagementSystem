@@ -11,6 +11,7 @@ class StorageLocationCreate(BaseModel):
 
     name: str = Field(min_length=1, max_length=100)
     description: str | None = None
+    warehouse_id: int | None = Field(default=None, ge=1)
 
     @field_validator("name", mode="before")
     @classmethod
@@ -69,3 +70,4 @@ class StorageLocationResponse(BaseModel):
     id: int
     name: str
     description: str | None
+    warehouse_id: int

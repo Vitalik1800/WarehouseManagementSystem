@@ -3,6 +3,8 @@ from unittest.mock import Mock
 
 import pytest
 
+from tests.gui_cleanup import cleanup_gui
+
 from frontend.app.api.client import APIConnectionError
 from frontend.main import WarehouseApplication
 
@@ -22,6 +24,13 @@ def app(monkeypatch):
         "frontend.main.APIClient",
         Mock
     )
+    # Legacy GUI tests exercise login/logout flows, not the async restore worker.
+    # Make startup deterministically choose the no-saved-session branch.
+    monkeypatch.setattr(
+        WarehouseApplication,
+        "_start_session_restore",
+        lambda self: self._show_login(),
+    )
 
     application = WarehouseApplication()
     application.withdraw()
@@ -31,6 +40,7 @@ def app(monkeypatch):
 
     if not application._closing:
         application.on_close()
+    cleanup_gui(application)
 
 
 def authenticate(app):

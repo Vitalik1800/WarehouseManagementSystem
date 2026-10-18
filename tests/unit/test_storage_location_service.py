@@ -10,6 +10,7 @@ from backend.app.services.storage_location_service import (
     StorageLocationAlreadyExistsError,
     StorageLocationInUseError,
     StorageLocationNotFoundError,
+    StorageLocationWarehouseNotFoundError,
     StorageLocationService,
 )
 
@@ -17,6 +18,9 @@ from backend.app.services.storage_location_service import (
 def make_service():
     db = Mock()
     service = StorageLocationService(db)
+    warehouse = Mock()
+    warehouse.id = 7
+    service.warehouses.get_by_code = Mock(return_value=warehouse)
     return db, service
 
 
@@ -156,7 +160,8 @@ def test_create_location_success():
         "Warehouse A"
     )
     service.locations.create.assert_called_once_with(
-        **data.model_dump()
+        **data.model_dump(exclude={'warehouse_id'}),
+        warehouse_id=7,
     )
 
     db.commit.assert_called_once()
@@ -182,7 +187,8 @@ def test_create_location_without_description():
     assert result is location
 
     service.locations.create.assert_called_once_with(
-        **data.model_dump()
+        **data.model_dump(exclude={'warehouse_id'}),
+        warehouse_id=7,
     )
 
     db.commit.assert_called_once()
@@ -231,6 +237,79 @@ def test_create_location_repository_error():
     db.commit.assert_not_called()
     db.refresh.assert_not_called()
     db.rollback.assert_called_once()
+
+
+def test_create_location_with_explicit_warehouse():
+    db, service = make_service()
+    location = make_location()
+    warehouse = Mock()
+    warehouse.id = 12
+
+    service.locations.get_by_name = Mock(return_value=None)
+    service.locations.create = Mock(return_value=location)
+    service.warehouses.get_by_id = Mock(return_value=warehouse)
+
+    data = StorageLocationCreate(
+        name="Warehouse A",
+        warehouse_id=12,
+    )
+
+    result = service.create_location(data)
+
+    assert result is location
+    service.warehouses.get_by_id.assert_called_once_with(12)
+    service.warehouses.get_by_code.assert_not_called()
+    service.locations.create.assert_called_once_with(
+        name="Warehouse A",
+        description=None,
+        warehouse_id=12,
+    )
+    db.commit.assert_called_once()
+
+
+def test_create_location_with_unknown_warehouse():
+    db, service = make_service()
+
+    service.locations.get_by_name = Mock(return_value=None)
+    service.warehouses.get_by_id = Mock(return_value=None)
+    service.locations.create = Mock()
+
+    with pytest.raises(
+        StorageLocationWarehouseNotFoundError,
+        match="Warehouse not found",
+    ):
+        service.create_location(
+            StorageLocationCreate(
+                name="Warehouse A",
+                warehouse_id=999999,
+            )
+        )
+
+    service.warehouses.get_by_id.assert_called_once_with(999999)
+    service.locations.create.assert_not_called()
+    db.commit.assert_not_called()
+    db.rollback.assert_not_called()
+
+
+def test_create_location_without_main_warehouse():
+    db, service = make_service()
+
+    service.locations.get_by_name = Mock(return_value=None)
+    service.warehouses.get_by_code = Mock(return_value=None)
+    service.locations.create = Mock()
+
+    with pytest.raises(
+        StorageLocationWarehouseNotFoundError,
+        match="Warehouse not found",
+    ):
+        service.create_location(
+            StorageLocationCreate(name="Warehouse A")
+        )
+
+    service.warehouses.get_by_code.assert_called_once_with("MAIN")
+    service.locations.create.assert_not_called()
+    db.commit.assert_not_called()
+    db.rollback.assert_not_called()
 
 
 # ============================================================

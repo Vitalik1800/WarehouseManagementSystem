@@ -4,6 +4,8 @@ from unittest.mock import Mock
 import customtkinter as ctk
 import pytest
 
+from tests.gui_cleanup import cleanup_gui
+
 from frontend.app.api.client import (
     APIConnectionError,
     APIRequestError
@@ -38,7 +40,7 @@ def login_gui():
     if view.winfo_exists():
         view.destroy()
 
-    root.destroy()
+    cleanup_gui(root)
 
 
 def fill_form(

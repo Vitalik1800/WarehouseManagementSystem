@@ -61,7 +61,7 @@ def worker_headers(db_session):
 
 
 @pytest.fixture
-def product(db_session):
+def product(db_session, main_warehouse_id):
     suffix = uuid4().hex[:12]
 
     category = Category(
@@ -70,7 +70,7 @@ def product(db_session):
 
     location = StorageLocation(
         name=f"InventoryLocation_{suffix}"
-    )
+    , warehouse_id=main_warehouse_id)
 
     db_session.add_all([category, location])
     db_session.flush()
@@ -603,6 +603,20 @@ def test_failed_outgoing_journal_insert_rolls_back_stock(
     ) == initial_movements
 
 
+
+def _require_main_warehouse_id(session):
+    from backend.app.models.warehouse import Warehouse
+
+    warehouse_id = session.scalar(
+        select(Warehouse.id).where(Warehouse.code == "MAIN")
+    )
+    if warehouse_id is None:
+        raise AssertionError(
+            "MAIN warehouse is missing from the test database"
+        )
+    return warehouse_id
+
+
 def test_concurrent_issues_do_not_oversell(test_engine):
     suffix = uuid4().hex[:12]
 
@@ -610,7 +624,8 @@ def test_concurrent_issues_do_not_oversell(test_engine):
     with Session(test_engine) as session:
         category = Category(name=f"ConcurrentCategory_{suffix}")
         location = StorageLocation(
-            name=f"ConcurrentLocation_{suffix}"
+            name=f"ConcurrentLocation_{suffix}",
+            warehouse_id=_require_main_warehouse_id(session),
         )
         user = User(
             name="Concurrent Inventory Worker",
@@ -746,7 +761,8 @@ def test_concurrent_receipts_do_not_overflow(test_engine):
             name=f"ReceiptCategory_{suffix}"
         )
         location = StorageLocation(
-            name=f"ReceiptLocation_{suffix}"
+            name=f"ReceiptLocation_{suffix}",
+            warehouse_id=_require_main_warehouse_id(session),
         )
         user = User(
             name="Concurrent Receipt Worker",

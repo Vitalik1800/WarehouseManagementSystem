@@ -1,6 +1,8 @@
 
 from unittest.mock import Mock, patch
 
+from frontend.app.services.credential_store import CredentialStore
+
 import httpx
 import pytest
 
@@ -163,6 +165,18 @@ def test_backend_authenticate_nonexistent_user_verifies_dummy_password():
 # ============================================================
 
 
+@pytest.fixture(autouse=True)
+def isolated_windows_credentials(monkeypatch):
+    """Never read or write the actual Windows Credential Manager in these tests."""
+    secrets = {}
+    fake = Mock(spec=CredentialStore)
+    fake.load.side_effect = lambda: secrets.get("refresh")
+    fake.save.side_effect = lambda token: secrets.__setitem__("refresh", token)
+    fake.delete.side_effect = lambda: secrets.pop("refresh", None)
+    monkeypatch.setattr("frontend.app.services.auth_service.CredentialStore", lambda: fake)
+
+
+
 @pytest.fixture
 def auth_client():
     """Створює HTTP-клієнт із тестовим Backend."""
@@ -173,6 +187,7 @@ def auth_client():
                 200,
                 json={
                     "access_token": "test-jwt-token",
+                    "refresh_token": "test-refresh-token",
                     "token_type": "bearer",
                 },
             )
@@ -241,6 +256,7 @@ def test_frontend_login_strips_username():
             200,
             json={
                 "access_token": "token",
+                "refresh_token": "test-refresh-token",
                 "token_type": "bearer",
             },
         )
@@ -473,7 +489,7 @@ def test_frontend_login_non_dict_response():
 
         with pytest.raises(
             AuthenticationError,
-            match="invalid login response",
+            match="invalid authentication data",
         ):
             service.login(
                 username="tester",

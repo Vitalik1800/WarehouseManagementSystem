@@ -1,6 +1,8 @@
 import customtkinter as ctk
 import pytest
 
+from tests.gui_cleanup import cleanup_gui
+
 from frontend.app.components.user_info_panel import UserInfoPanel
 
 
@@ -25,7 +27,7 @@ def user_panel():
     yield panel
 
     panel.destroy()
-    root.destroy()
+    cleanup_gui(root)
 
 
 def test_user_panel_initial_username(user_panel):

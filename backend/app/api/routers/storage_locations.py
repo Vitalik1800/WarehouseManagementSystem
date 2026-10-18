@@ -23,6 +23,7 @@ from backend.app.services.storage_location_service import (
     StorageLocationNotFoundError,
     StorageLocationAlreadyExistsError,
     StorageLocationInUseError,
+    StorageLocationWarehouseNotFoundError,
 )
 
 
@@ -118,6 +119,12 @@ def create_storage_location(
 
     try:
         location = service.create_location(data)
+
+    except StorageLocationWarehouseNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
 
     except StorageLocationAlreadyExistsError as exc:
         raise HTTPException(

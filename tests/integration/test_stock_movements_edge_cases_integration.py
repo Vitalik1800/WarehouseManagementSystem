@@ -35,11 +35,11 @@ def client(db_session):
 
 
 @pytest.fixture
-def inventory_context(db_session):
+def inventory_context(db_session, main_warehouse_id):
     suffix = uuid4().hex[:12]
 
     category = Category(name=f"EdgeCategory_{suffix}")
-    location = StorageLocation(name=f"EdgeLocation_{suffix}")
+    location = StorageLocation(name=f"EdgeLocation_{suffix}", warehouse_id=main_warehouse_id)
     user = User(
         name="Edge Case Worker",
         username=f"edge_{suffix}",

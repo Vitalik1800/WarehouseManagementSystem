@@ -555,7 +555,7 @@ def test_delete_category_missing_token(client):
 def test_delete_category_with_products_conflict(
         client,
         db_session,
-        admin_headers,
+        admin_headers, main_warehouse_id,
 ):
     suffix = uuid4().hex[:12]
 
@@ -567,7 +567,7 @@ def test_delete_category_with_products_conflict(
     location = StorageLocation(
         name=f"Storage_{suffix}",
         description="Test storage location",
-    )
+     warehouse_id=main_warehouse_id,)
 
     db_session.add_all([category, location])
     db_session.flush()
