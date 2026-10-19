@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -7,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-ENV_FILE = PROJECT_ROOT / ".env"
+ENV_FILE = Path(os.environ["WAREHOUSE_ENV_FILE"]).resolve() if os.environ.get("WAREHOUSE_ENV_FILE") else PROJECT_ROOT / ".env"
 
 
 class FrontendSettings(BaseSettings):

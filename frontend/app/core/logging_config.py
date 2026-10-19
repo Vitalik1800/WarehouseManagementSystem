@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 from logging.handlers import RotatingFileHandler
@@ -10,7 +11,8 @@ from frontend.app.core.config import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-LOG_DIRECTORY = PROJECT_ROOT / "logs" / "frontend"
+LOG_ROOT = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "WarehouseManagementSystem" if getattr(sys, "frozen", False) else PROJECT_ROOT
+LOG_DIRECTORY = LOG_ROOT / "logs" / "frontend"
 LOG_FILE = LOG_DIRECTORY / "frontend.log"
 
 LOGGER_NAME = "warehouse.frontend"
@@ -44,12 +46,6 @@ def setup_frontend_logging() -> logging.Logger:
         datefmt=DATE_FORMAT
     )
 
-    console_handler = logging.StreamHandler(
-        sys.stdout
-    )
-
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
 
     file_handler = RotatingFileHandler(
         filename=LOG_FILE,
@@ -61,7 +57,11 @@ def setup_frontend_logging() -> logging.Logger:
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)
 
-    logger.addHandler(console_handler)
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
     return logger

@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 
 from logging.handlers import RotatingFileHandler
@@ -7,7 +8,8 @@ from pathlib import Path
 from backend.app.core.config import get_settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-LOG_DIRECTORY = PROJECT_ROOT / "logs" / "backend"
+LOG_ROOT = Path(os.environ.get("LOCALAPPDATA") or PROJECT_ROOT) / "WarehouseManagementSystem" if getattr(sys, "frozen", False) else PROJECT_ROOT
+LOG_DIRECTORY = LOG_ROOT / "logs" / "backend"
 LOG_FILE = LOG_DIRECTORY / "backend.log"
 
 LOGGER_NAME = "warehouse.backend"
@@ -48,15 +50,6 @@ def setup_backend_logging() -> logging.Logger:
         datefmt=DATE_FORMAT
     )
 
-    console_handler = logging.StreamHandler(
-        sys.stdout
-    )
-
-    console_handler.setLevel(
-        log_level
-    )
-
-    console_handler.setFormatter(formatter)
 
     file_handler = RotatingFileHandler(
         filename=LOG_FILE,
@@ -71,7 +64,11 @@ def setup_backend_logging() -> logging.Logger:
 
     file_handler.setFormatter(formatter)
 
-    logger.addHandler(console_handler)
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(log_level)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
     logger.addHandler(file_handler)
 
     return logger
