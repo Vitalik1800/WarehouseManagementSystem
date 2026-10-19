@@ -42,6 +42,8 @@ def parse_activity_filters(raw: dict[str, str], role: str) -> dict[str, Any]:
                 raise ValueError(f"{field}: формат РРРР-ММ-ДД або РРРР-ММ-ДД ГГ:ХХ") from exc
             if parsed.tzinfo is not None:
                 raise ValueError(f"{field}: часовий пояс не підтримується")
+            if field == "date_to" and len(value) == 10 and value[4] == "-" and value[7] == "-":
+                parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
             result[field] = parsed
     if result.get("date_from") and result.get("date_to") and result["date_from"] > result["date_to"]:
         raise ValueError("Початок періоду пізніше кінця")

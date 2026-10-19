@@ -45,3 +45,19 @@ def test_details_unicode():
 def test_view_is_read_only():
     assert not hasattr(ActivityLogView, "delete_activity")
     assert not hasattr(ActivityLogView, "create_activity")
+
+
+def test_date_to_includes_entire_calendar_day():
+    filters = parse_activity_filters({"date_from": "2026-10-19", "date_to": "2026-10-19"}, "admin")
+    assert filters["date_from"] == datetime(2026, 10, 19)
+    assert filters["date_to"] == datetime(2026, 10, 19, 23, 59, 59, 999999)
+
+
+def test_date_to_preserves_explicit_time():
+    filters = parse_activity_filters({"date_to": "2026-10-19 12:00"}, "admin")
+    assert filters["date_to"] == datetime(2026, 10, 19, 12, 0)
+
+
+def test_date_to_does_not_include_next_day():
+    filters = parse_activity_filters({"date_to": "2026-10-19"}, "admin")
+    assert filters["date_to"] < datetime(2026, 10, 20)
