@@ -1,3 +1,4 @@
 customtkinter
 httpx
 pillow
+keyring==25.7.0
