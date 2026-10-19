@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.app_name,
     description="REST API для автоматизації обліку товарів на складі",
-    version="0.1.0",
+    version="1.0.0",
     debug=settings.debug,
     lifespan=lifespan
 )
